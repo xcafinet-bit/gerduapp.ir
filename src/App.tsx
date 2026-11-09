@@ -1765,6 +1765,8 @@ function App() {
   const [salesInvoiceListFilter, setSalesInvoiceListFilter] = useState<SalesInvoiceListFilter>('all')
   const [salesInvoiceListSearchOpen, setSalesInvoiceListSearchOpen] = useState(false)
   const [salesInvoiceListSearch, setSalesInvoiceListSearch] = useState('')
+  const [purchaseInvoiceListSearchOpen, setPurchaseInvoiceListSearchOpen] = useState(false)
+  const [purchaseInvoiceListSearch, setPurchaseInvoiceListSearch] = useState('')
   const [salesInvoiceConfirmation, setSalesInvoiceConfirmation] = useState<SavedSalesInvoice | null>(null)
   const [salesInvoiceOpenedFromList, setSalesInvoiceOpenedFromList] = useState(false)
   const [salesInvoiceMoreOpen, setSalesInvoiceMoreOpen] = useState(false)
@@ -2172,6 +2174,12 @@ function App() {
     .filter(() => salesInvoiceListFilter !== 'current')
     .filter((invoice) => {
       const query = salesInvoiceListSearch.trim().toLocaleLowerCase()
+      return !query || `${invoice.number} ${invoice.buyerName}`.toLocaleLowerCase().includes(query)
+    })
+  const purchaseInvoiceListRows = [...storedPurchaseInvoices.invoices]
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((invoice) => {
+      const query = purchaseInvoiceListSearch.trim().toLocaleLowerCase()
       return !query || `${invoice.number} ${invoice.buyerName}`.toLocaleLowerCase().includes(query)
     })
   const salesInvoiceReceivedTotal = (salesInvoiceConfirmation?.receipts ?? [])
@@ -7291,6 +7299,93 @@ function App() {
               </section>
             </section>
           </div>
+        ) : activeTab === 'فاکتورهای خرید' ? (
+          <section className="sales-invoice-list-page" aria-labelledby="purchase-invoice-list-title">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label="به‌روزرسانی فاکتورهای خرید"
+                onClick={() => setStoredPurchaseInvoices(readStoredPurchaseInvoices(activeStoreId))}
+              >
+                ↻
+              </button>
+              <h1 id="purchase-invoice-list-title">فاکتورهای خرید</h1>
+              <button
+                type="button"
+                aria-label={purchaseInvoiceListSearchOpen ? 'بستن جستجوی فاکتورهای خرید' : 'جستجوی فاکتورهای خرید'}
+                aria-expanded={purchaseInvoiceListSearchOpen}
+                onClick={() => {
+                  setPurchaseInvoiceListSearchOpen((open) => !open)
+                  setPurchaseInvoiceListSearch('')
+                }}
+              >
+                ⌕
+              </button>
+            </header>
+            {purchaseInvoiceListSearchOpen && (
+              <label className="sales-invoice-list-search">
+                <span className="sr-only">جستجو بر اساس شماره فاکتور خرید یا تأمین‌کننده</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={purchaseInvoiceListSearch}
+                  onChange={(event) => setPurchaseInvoiceListSearch(event.target.value)}
+                  placeholder="شماره فاکتور خرید یا تأمین‌کننده"
+                />
+              </label>
+            )}
+            <div className="sales-invoice-list-table" aria-label="فهرست فاکتورهای خرید">
+              <div className="sales-invoice-list-table-head">
+                <span>فاکتور</span>
+                <span>تاریخ</span>
+                <span>تأمین‌کننده</span>
+                <span>مبلغ</span>
+              </div>
+              {storedPurchaseInvoices.error ? (
+                <p className="sales-invoice-list-message error" role="alert">{storedPurchaseInvoices.error}</p>
+              ) : purchaseInvoiceListRows.length ? (
+                purchaseInvoiceListRows.map((invoice) => {
+                  const quantity = invoice.lines.reduce((total, line) => total + line.quantity, 0)
+                  const invoiceDate = new Date(`${invoice.date}T12:00:00Z`)
+                  const time = `${formatClockNumber(invoice.time.hours).padStart(2, '۰')}:${formatClockNumber(invoice.time.minutes).padStart(2, '۰')}`
+                  return (
+                    <div className="sales-invoice-list-row purchase-invoice-list-row" key={invoice.id}>
+                      <strong>{invoice.number}</strong>
+                      <span className="sales-invoice-list-date">
+                        {formatCalendarDate(invoiceDate, invoice.calendar)}
+                        <small>{time}</small>
+                      </span>
+                      <span className="sales-invoice-list-buyer">{invoice.buyerName}</span>
+                      <span className="sales-invoice-list-amount">
+                        <strong>{formatPersonBalance(invoice.total)}</strong>
+                        <small>{formatPersonBalance(quantity)} قلم</small>
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="sales-invoice-list-message">
+                  {purchaseInvoiceListSearch.trim()
+                    ? 'فاکتور خریدی با این مشخصات پیدا نشد.'
+                    : 'هنوز فاکتور خریدی ثبت نشده است.'}
+                </p>
+              )}
+            </div>
+            <footer className="sales-invoice-list-footer" aria-label="عملیات فاکتورهای خرید">
+              <button type="button" onClick={() => setActiveTab('خانه')}>
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                <span aria-hidden="true">▥</span>
+                گزارشات
+              </button>
+              <button type="button" onClick={openPurchaseInvoice}>
+                <span aria-hidden="true">＋</span>
+                فاکتور خرید جدید
+              </button>
+            </footer>
+          </section>
         ) : activeTab === 'فاکتورهای فروش' ? (
           <section className="sales-invoice-list-page" aria-labelledby="sales-invoice-list-title">
             <header className="sales-invoice-list-header">
@@ -12801,7 +12896,7 @@ function App() {
           <div className="link-grid">
             {documents.map((item) => (
               <button
-                className={`list-link${item.label === 'فاکتورهای فروش' ? ' list-link-sales-invoices' : ''}`}
+                className={`list-link${item.label === 'فاکتورهای فروش' || item.label === 'فاکتورهای خرید' ? ' list-link-invoices' : ''}`}
                 key={item.label}
                 type="button"
                 onClick={() => {
@@ -12810,6 +12905,11 @@ function App() {
                     setSalesInvoiceListSearch('')
                     setSalesInvoiceListSearchOpen(false)
                     setActiveTab('فاکتورهای فروش')
+                  } else if (item.label === 'فاکتورهای خرید') {
+                    setPurchaseInvoiceListSearch('')
+                    setPurchaseInvoiceListSearchOpen(false)
+                    setStoredPurchaseInvoices(readStoredPurchaseInvoices(activeStoreId))
+                    setActiveTab('فاکتورهای خرید')
                   } else {
                     showComingSoon(item.label)
                   }
