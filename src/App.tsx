@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import TrazinoBook from './TrazinoBook'
@@ -1124,6 +1124,17 @@ type PeopleFilterDrag = {
   isDragging: boolean
 }
 
+type InventoryActionTarget =
+  | { type: 'warehouse'; name: string }
+  | { type: 'group'; name: string; kind: InventoryKind }
+  | { type: 'category'; name: string; group: string }
+
+type InventoryActionItem = InventoryActionTarget & { x: number; y: number }
+
+type EditingInventoryTaxonomy =
+  | { type: 'group'; name: string; kind: InventoryKind }
+  | { type: 'category'; name: string; group: string }
+
 function readStoredPeopleGroups(storeId: number | null = null): StoredPeopleGroups {
   try {
     const raw = readStoreData(PEOPLE_GROUPS_STORAGE_KEY, storeId)
@@ -1900,10 +1911,13 @@ function App() {
   const [inventoryTaxonomyForm, setInventoryTaxonomyForm] = useState<'group' | 'category' | null>(null)
   const [inventoryTaxonomyInput, setInventoryTaxonomyInput] = useState('')
   const [inventoryTaxonomyError, setInventoryTaxonomyError] = useState('')
+  const [editingInventoryTaxonomy, setEditingInventoryTaxonomy] = useState<EditingInventoryTaxonomy | null>(null)
+  const [inventoryActionItem, setInventoryActionItem] = useState<InventoryActionItem | null>(null)
   const [inventoryWarehousesOpen, setInventoryWarehousesOpen] = useState(false)
   const [inventoryWarehouseFormOpen, setInventoryWarehouseFormOpen] = useState(false)
   const [inventoryWarehouseInput, setInventoryWarehouseInput] = useState('')
   const [inventoryWarehouseError, setInventoryWarehouseError] = useState('')
+  const [editingInventoryWarehouse, setEditingInventoryWarehouse] = useState<string | null>(null)
   const [inventorySearch, setInventorySearch] = useState('')
   const [inventorySort, setInventorySort] = useState<(typeof inventorySortOptions)[number]['value']>('created')
   const [inventoryToolbarMenu, setInventoryToolbarMenu] = useState<'sort' | 'more' | null>(null)
@@ -1960,6 +1974,9 @@ function App() {
   const suppressPeopleFilterClick = useRef(false)
   const inventoryFilterDrag = useRef<(PeopleFilterDrag & { container: 'groups' | 'categories' }) | null>(null)
   const suppressInventoryFilterClick = useRef(false)
+  const inventoryActionPressTimer = useRef<number | null>(null)
+  const inventoryActionPressOrigin = useRef<{ x: number; y: number } | null>(null)
+  const suppressInventoryActionClick = useRef(false)
   const [notice, setNotice] = useState('')
   const [authNotice, setAuthNotice] = useState('')
   const backNavigationHandlerRef = useRef<() => boolean>(() => false)
@@ -2669,6 +2686,26 @@ function App() {
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [peopleGroupMenu])
+
+  useEffect(() => {
+    if (!inventoryActionItem) return
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      if (event.target.closest('.inventory-action-menu, .inventory-action-trigger')) return
+      setInventoryActionItem(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setInventoryActionItem(null)
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [inventoryActionItem])
 
   useEffect(() => {
     if (!personFormOpen) return
@@ -5895,45 +5932,182 @@ function App() {
     }
   }
 
+  const clearInventoryActionPressTimer = () => {
+    if (inventoryActionPressTimer.current !== null) {
+      window.clearTimeout(inventoryActionPressTimer.current)
+      inventoryActionPressTimer.current = null
+    }
+    inventoryActionPressOrigin.current = null
+  }
+
+  const openInventoryActionMenu = (item: InventoryActionItem) => {
+    setInventoryActionItem({
+      ...item,
+      x: Math.max(8, Math.min(item.x, window.innerWidth - 190)),
+      y: Math.max(8, Math.min(item.y, window.innerHeight - 120)),
+    })
+  }
+
+  const startInventoryActionPress = (event: ReactPointerEvent<HTMLElement>, item: InventoryActionTarget) => {
+    clearInventoryActionPressTimer()
+    suppressInventoryActionClick.current = false
+    if (item.type === 'warehouse' && item.name === DEFAULT_INVENTORY_WAREHOUSE) return
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+    if ((event.target as Element).closest('.inventory-action-trigger')) return
+    const { clientX, clientY } = event
+    inventoryActionPressOrigin.current = { x: clientX, y: clientY }
+    inventoryActionPressTimer.current = window.setTimeout(() => {
+      suppressInventoryActionClick.current = true
+      openInventoryActionMenu({ ...item, x: clientX, y: clientY })
+      inventoryActionPressTimer.current = null
+    }, 550)
+  }
+
+  const moveInventoryActionPress = (event: ReactPointerEvent<HTMLElement>) => {
+    const origin = inventoryActionPressOrigin.current
+    if (!origin) return
+    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+      clearInventoryActionPressTimer()
+    }
+  }
+
+  const activateInventoryActionItem = (event: ReactMouseEvent<HTMLButtonElement>, item: InventoryActionTarget) => {
+    if (suppressInventoryActionClick.current) {
+      suppressInventoryActionClick.current = false
+      event.preventDefault()
+      return
+    }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    openInventoryActionMenu({ ...item, x: bounds.left, y: bounds.bottom + 5 })
+  }
+
+  const persistInventoryChanges = (
+    nextOptions: StoredInventoryOptions,
+    nextItems: InventoryRecord[] = storedInventoryRecords.items,
+  ) => {
+    const optionsKey = getActiveStoreDataStorageKey(INVENTORY_OPTIONS_STORAGE_KEY, activeStoreId)
+    const itemsKey = getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId)
+    const previousOptions = localStorage.getItem(optionsKey)
+    const previousItems = localStorage.getItem(itemsKey)
+    try {
+      localStorage.setItem(optionsKey, JSON.stringify(nextOptions))
+      if (nextItems !== storedInventoryRecords.items) localStorage.setItem(itemsKey, JSON.stringify(nextItems))
+    } catch (error) {
+      try {
+        if (previousOptions === null) localStorage.removeItem(optionsKey)
+        else localStorage.setItem(optionsKey, previousOptions)
+        if (nextItems !== storedInventoryRecords.items) {
+          if (previousItems === null) localStorage.removeItem(itemsKey)
+          else localStorage.setItem(itemsKey, previousItems)
+        }
+      } catch {
+        throw new Error('ذخیره‌سازی کامل نشد و بازگردانی اطلاعات قبلی نیز ممکن نبود.')
+      }
+      throw error
+    }
+    setInventoryOptions(nextOptions)
+    if (nextItems !== storedInventoryRecords.items) setStoredInventoryRecords({ items: nextItems, error: '' })
+  }
+
   const addInventoryTaxonomy = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = inventoryTaxonomyInput.trim()
     if (!value) {
       setInventoryTaxonomyError(
-        inventoryTaxonomyForm === 'group' ? 'نام گروه را وارد کنید.' : 'نام دسته‌بندی را وارد کنید.',
+        editingInventoryTaxonomy?.type === 'group' || inventoryTaxonomyForm === 'group'
+          ? 'نام گروه را وارد کنید.'
+          : 'نام دسته‌بندی را وارد کنید.',
       )
       return
     }
 
-    if (inventoryTaxonomyForm === 'category' && inventoryGroup === 'همه') {
+    const edit = editingInventoryTaxonomy
+    const formType = edit?.type ?? inventoryTaxonomyForm
+    const selectedGroup = edit?.type === 'category' ? edit.group : inventoryGroup
+    const selectedKind = edit?.type === 'group' ? edit.kind : inventoryKind
+    const originalName = edit?.name
+
+    if (formType === 'category' && selectedGroup === 'همه') {
       setInventoryTaxonomyError('برای افزودن دسته‌بندی، ابتدا یک گروه کالا را انتخاب کنید.')
       return
     }
 
-    const values = inventoryTaxonomyForm === 'group'
-      ? activeWarehouseTaxonomy.groupsByKind[inventoryKind]
-      : activeWarehouseTaxonomy.categoriesByGroup[inventoryGroup] ?? []
-    if (values.some((existing) => existing.toLocaleLowerCase() === value.toLocaleLowerCase())) {
+    const values = formType === 'group'
+      ? activeWarehouseTaxonomy.groupsByKind[selectedKind]
+      : activeWarehouseTaxonomy.categoriesByGroup[selectedGroup] ?? []
+    const alreadyExists = formType === 'group'
+      ? Object.entries(activeWarehouseTaxonomy.groupsByKind).some(([kind, groups]) =>
+          groups.some((existing) =>
+            existing.toLocaleLowerCase() === value.toLocaleLowerCase()
+            && !(kind === selectedKind && existing === originalName)))
+      : values.some((existing) =>
+          existing.toLocaleLowerCase() === value.toLocaleLowerCase()
+          && existing !== originalName)
+    if (alreadyExists) {
       setInventoryTaxonomyError('این مورد از قبل وجود دارد.')
       return
     }
 
-    const nextTaxonomy = inventoryTaxonomyForm === 'group'
-      ? {
+    let nextTaxonomy = activeWarehouseTaxonomy
+    let nextItems = storedInventoryRecords.items
+    if (edit?.type === 'group') {
+      const groupsByKind = {
+        ...activeWarehouseTaxonomy.groupsByKind,
+        [edit.kind]: activeWarehouseTaxonomy.groupsByKind[edit.kind]
+          .map((group) => group === edit.name ? value : group),
+      }
+      const categoriesByGroup = { ...activeWarehouseTaxonomy.categoriesByGroup }
+      const existingCategories = categoriesByGroup[edit.name] ?? []
+      if (!Object.values(groupsByKind).some((groups) => groups.includes(edit.name))) {
+        delete categoriesByGroup[edit.name]
+      }
+      categoriesByGroup[value] = [...new Set([...(categoriesByGroup[value] ?? []), ...existingCategories])]
+      nextTaxonomy = {
           ...activeWarehouseTaxonomy,
-          groupsByKind: {
-            ...activeWarehouseTaxonomy.groupsByKind,
-            [inventoryKind]: [...activeWarehouseTaxonomy.groupsByKind[inventoryKind], value],
-          },
-          categoriesByGroup: { ...activeWarehouseTaxonomy.categoriesByGroup, [value]: [] },
+          groupsByKind,
+          categoriesByGroup,
         }
-      : {
+      nextItems = storedInventoryRecords.items.map((item) =>
+        (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
+        && item.kind === edit.kind
+        && item.group === edit.name
+          ? { ...item, group: value }
+          : item)
+    } else if (edit?.type === 'category') {
+      nextTaxonomy = {
           ...activeWarehouseTaxonomy,
           categoriesByGroup: {
             ...activeWarehouseTaxonomy.categoriesByGroup,
-            [inventoryGroup]: [...values, value],
+            [edit.group]: (activeWarehouseTaxonomy.categoriesByGroup[edit.group] ?? []).map((category) =>
+              category === edit.name ? value : category),
           },
         }
+      nextItems = storedInventoryRecords.items.map((item) =>
+        (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
+        && item.group === edit.group
+        && item.category === edit.name
+          ? { ...item, category: value }
+          : item)
+    } else if (formType === 'group') {
+      nextTaxonomy = {
+          ...activeWarehouseTaxonomy,
+          groupsByKind: {
+            ...activeWarehouseTaxonomy.groupsByKind,
+            [selectedKind]: [...activeWarehouseTaxonomy.groupsByKind[selectedKind], value],
+          },
+          categoriesByGroup: {
+            ...activeWarehouseTaxonomy.categoriesByGroup, [value]: [],
+          },
+        }
+    } else {
+      nextTaxonomy = {
+        ...activeWarehouseTaxonomy,
+        categoriesByGroup: {
+          ...activeWarehouseTaxonomy.categoriesByGroup,
+          [selectedGroup]: [...values, value],
+        },
+      }
+    }
     const nextOptions: StoredInventoryOptions = {
       ...inventoryOptions,
       warehouseTaxonomies: {
@@ -5942,19 +6116,21 @@ function App() {
       },
     }
     try {
-      localStorage.setItem(
-        getActiveStoreDataStorageKey(INVENTORY_OPTIONS_STORAGE_KEY, activeStoreId),
-        JSON.stringify(nextOptions),
-      )
-      setInventoryOptions(nextOptions)
-      if (inventoryTaxonomyForm === 'group') {
+      persistInventoryChanges(nextOptions, nextItems)
+      if (edit?.type === 'group' && inventoryGroup === edit.name) {
         setInventoryGroup(value)
         setInventoryCategory('همه')
-      } else {
+      } else if (!edit && formType === 'group') {
+        setInventoryGroup(value)
+        setInventoryCategory('همه')
+      } else if (edit?.type === 'category' && inventoryCategory === edit.name) {
+        setInventoryCategory(value)
+      } else if (!edit && formType === 'category') {
         setInventoryCategory(value)
       }
       setInventoryTaxonomyInput('')
       setInventoryTaxonomyForm(null)
+      setEditingInventoryTaxonomy(null)
       setInventoryTaxonomyError('')
     } catch {
       setInventoryTaxonomyError('ذخیرهٔ تغییر انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
@@ -5968,36 +6144,176 @@ function App() {
       setInventoryWarehouseError('نام انبار را وارد کنید.')
       return
     }
-    if (inventoryOptions.warehouses.some((warehouse) => warehouse.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    if (inventoryOptions.warehouses.some((warehouse) =>
+      warehouse.toLocaleLowerCase() === name.toLocaleLowerCase()
+      && warehouse !== editingInventoryWarehouse
+    )) {
       setInventoryWarehouseError('این انبار از قبل ثبت شده است.')
       return
     }
 
-    const nextOptions: StoredInventoryOptions = {
-      ...inventoryOptions,
-      warehouses: [...inventoryOptions.warehouses, name],
-      warehouseTaxonomies: {
-        ...inventoryOptions.warehouseTaxonomies,
-        [name]: { groupsByKind: { کالا: [], خدمات: [], تولید: [] }, categoriesByGroup: {} },
-      },
-    }
+    const isEditing = editingInventoryWarehouse !== null
+    const nextOptions: StoredInventoryOptions = isEditing
+      ? {
+          ...inventoryOptions,
+          warehouses: inventoryOptions.warehouses.map((warehouse) =>
+            warehouse === editingInventoryWarehouse ? name : warehouse),
+          warehouseTaxonomies: Object.fromEntries(
+            Object.entries(inventoryOptions.warehouseTaxonomies ?? {}).map(([warehouse, taxonomy]) =>
+              warehouse === editingInventoryWarehouse ? [name, taxonomy] : [warehouse, taxonomy]),
+          ),
+        }
+      : {
+          ...inventoryOptions,
+          warehouses: [...inventoryOptions.warehouses, name],
+          warehouseTaxonomies: {
+            ...inventoryOptions.warehouseTaxonomies,
+            [name]: { groupsByKind: { کالا: [], خدمات: [], تولید: [] }, categoriesByGroup: {} },
+          },
+        }
+    const nextItems = isEditing
+      ? storedInventoryRecords.items.map((item) =>
+          (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === editingInventoryWarehouse
+            ? { ...item, warehouse: name }
+            : item)
+      : storedInventoryRecords.items
     try {
-      localStorage.setItem(
-        getActiveStoreDataStorageKey(INVENTORY_OPTIONS_STORAGE_KEY, activeStoreId),
-        JSON.stringify(nextOptions),
-      )
-      setInventoryOptions(nextOptions)
+      persistInventoryChanges(nextOptions, nextItems)
       setSelectedWarehouse(name)
       setInventoryGroup('همه')
       setInventoryCategory('همه')
       setInventorySearch('')
       setInventoryWarehouseInput('')
       setInventoryWarehouseError('')
+      setEditingInventoryWarehouse(null)
       setInventoryWarehouseFormOpen(false)
       setInventoryWarehousesOpen(false)
     } catch {
       setInventoryWarehouseError('ذخیرهٔ انبار انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
     }
+  }
+
+  const performInventoryAction = (action: 'edit' | 'delete') => {
+    const target = inventoryActionItem
+    if (!target) return
+
+    if (action === 'edit') {
+      if (target.type === 'warehouse') {
+        setEditingInventoryWarehouse(target.name)
+        setInventoryWarehouseInput(target.name)
+        setInventoryWarehouseError('')
+        setInventoryWarehousesOpen(false)
+        setInventoryWarehouseFormOpen(true)
+      } else {
+        setEditingInventoryTaxonomy(
+          target.type === 'group'
+            ? { type: 'group', name: target.name, kind: target.kind }
+            : { type: 'category', name: target.name, group: target.group },
+        )
+        setInventoryTaxonomyForm(target.type)
+        setInventoryTaxonomyInput(target.name)
+        setInventoryTaxonomyError('')
+      }
+      setInventoryActionItem(null)
+      return
+    }
+
+    if (target.type === 'warehouse' && target.name === DEFAULT_INVENTORY_WAREHOUSE) return
+
+    try {
+      let nextOptions = inventoryOptions
+      let nextItems = storedInventoryRecords.items
+
+      if (target.type === 'warehouse') {
+        const warehouseTaxonomies = { ...(inventoryOptions.warehouseTaxonomies ?? {}) }
+        delete warehouseTaxonomies[target.name]
+        nextOptions = {
+          ...inventoryOptions,
+          warehouses: inventoryOptions.warehouses.filter((warehouse) => warehouse !== target.name),
+          warehouseTaxonomies,
+        }
+        nextItems = storedInventoryRecords.items.map((item) =>
+          (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === target.name
+            ? {
+                ...item,
+                warehouse: DEFAULT_INVENTORY_WAREHOUSE,
+                group: 'بدون گروه',
+                category: 'بدون دسته‌بندی',
+              }
+            : item)
+      } else {
+        const warehouseTaxonomies = inventoryOptions.warehouseTaxonomies ?? {
+          [DEFAULT_INVENTORY_WAREHOUSE]: activeWarehouseTaxonomy,
+        }
+        const taxonomy = warehouseTaxonomies[activeWarehouse] ?? activeWarehouseTaxonomy
+        if (target.type === 'group') {
+          const categoriesByGroup = { ...taxonomy.categoriesByGroup }
+          const groupsByKind = {
+            ...taxonomy.groupsByKind,
+            [target.kind]: taxonomy.groupsByKind[target.kind].filter((group) => group !== target.name),
+          }
+          if (!Object.values(groupsByKind).some((groups) => groups.includes(target.name))) {
+            delete categoriesByGroup[target.name]
+          }
+          nextOptions = {
+            ...inventoryOptions,
+            warehouseTaxonomies: {
+              ...warehouseTaxonomies,
+              [activeWarehouse]: {
+                ...taxonomy,
+                groupsByKind,
+                categoriesByGroup,
+              },
+            },
+          }
+          nextItems = storedInventoryRecords.items.map((item) =>
+            (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
+            && item.kind === target.kind
+            && item.group === target.name
+              ? { ...item, group: 'بدون گروه', category: 'بدون دسته‌بندی' }
+              : item)
+          if (inventoryGroup === target.name) {
+            setInventoryGroup('همه')
+            setInventoryCategory('همه')
+          }
+        } else {
+          nextOptions = {
+            ...inventoryOptions,
+            warehouseTaxonomies: {
+              ...warehouseTaxonomies,
+              [activeWarehouse]: {
+                ...taxonomy,
+                categoriesByGroup: {
+                  ...taxonomy.categoriesByGroup,
+                  [target.group]: (taxonomy.categoriesByGroup[target.group] ?? [])
+                    .filter((category) => category !== target.name),
+                },
+              },
+            },
+          }
+          nextItems = storedInventoryRecords.items.map((item) =>
+            (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
+            && item.group === target.group
+            && item.category === target.name
+              ? { ...item, category: 'بدون دسته‌بندی' }
+              : item)
+          if (inventoryCategory === target.name) setInventoryCategory('همه')
+        }
+      }
+
+      persistInventoryChanges(nextOptions, nextItems)
+      if (target.type === 'warehouse') {
+        if (selectedWarehouse === target.name) {
+          setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
+          setInventoryGroup('همه')
+          setInventoryCategory('همه')
+        }
+        setInventoryWarehousesOpen(false)
+      }
+    } catch {
+      setNotice('تغییر ذخیره نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+    }
+    setInventoryActionItem(null)
   }
 
   useEffect(() => {
@@ -11148,6 +11464,7 @@ function App() {
                     onClick={() => {
                       setInventoryWarehousesOpen(false)
                       setInventoryWarehouseFormOpen(true)
+                      setEditingInventoryWarehouse(null)
                       setInventoryWarehouseInput('')
                       setInventoryWarehouseError('')
                     }}
@@ -11184,22 +11501,46 @@ function App() {
                       انبارگردانی
                     </button>
                     {inventoryOptions.warehouses.map((warehouse) => (
-                      <button
-                        className={`inventory-warehouse-chip${activeWarehouse === warehouse ? ' active' : ''}`}
+                      <span
+                        className="inventory-action-chip-wrap"
                         key={warehouse}
-                        type="button"
-                        aria-pressed={activeWarehouse === warehouse}
-                        onClick={() => {
-                          setSelectedWarehouse(warehouse)
-                          setInventoryGroup('همه')
-                          setInventoryCategory('همه')
-                          setInventorySearch('')
-                          setInventoryWarehousesOpen(false)
-                        }}
+                        onPointerDown={(event) => startInventoryActionPress(event, { type: 'warehouse', name: warehouse })}
+                        onPointerMove={moveInventoryActionPress}
+                        onPointerUp={clearInventoryActionPressTimer}
+                        onPointerCancel={clearInventoryActionPressTimer}
                       >
-                        <Icon name="shop" />
-                        {warehouse}
-                      </button>
+                        <button
+                          className={`inventory-warehouse-chip${activeWarehouse === warehouse ? ' active' : ''}`}
+                          type="button"
+                          aria-pressed={activeWarehouse === warehouse}
+                          onClick={(event) => {
+                            if (suppressInventoryActionClick.current) {
+                              suppressInventoryActionClick.current = false
+                              event.preventDefault()
+                              return
+                            }
+                            setSelectedWarehouse(warehouse)
+                            setInventoryGroup('همه')
+                            setInventoryCategory('همه')
+                            setInventorySearch('')
+                            setInventoryWarehousesOpen(false)
+                          }}
+                        >
+                          <Icon name="shop" />
+                          {warehouse}
+                        </button>
+                        {warehouse !== DEFAULT_INVENTORY_WAREHOUSE && (
+                          <button
+                            className="inventory-action-trigger"
+                            type="button"
+                            aria-label={`گزینه‌های انبار ${warehouse}`}
+                            title={`گزینه‌های انبار ${warehouse}`}
+                            onClick={(event) => activateInventoryActionItem(event, { type: 'warehouse', name: warehouse })}
+                          >
+                            <span aria-hidden="true">⋮</span>
+                          </button>
+                        )}
+                      </span>
                     ))}
                   </div>
                 </section>
@@ -11208,13 +11549,17 @@ function App() {
                 <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label="افزودن انبار">
                   <div className="inventory-warehouses-heading">
                     <div>
-                      <strong>افزودن انبار جدید</strong>
+                      <strong>{editingInventoryWarehouse ? 'ویرایش انبار' : 'افزودن انبار جدید'}</strong>
                       <span>پس از افزودن، انبار جدید به‌صورت خودکار انتخاب می‌شود.</span>
                     </div>
                     <button
                       type="button"
                       aria-label="بستن فرم افزودن انبار"
-                      onClick={() => setInventoryWarehouseFormOpen(false)}
+                      onClick={() => {
+                        setInventoryWarehouseFormOpen(false)
+                        setEditingInventoryWarehouse(null)
+                        setInventoryWarehouseError('')
+                      }}
                     >
                       ×
                     </button>
@@ -11228,12 +11573,16 @@ function App() {
                         setInventoryWarehouseInput(event.target.value)
                         setInventoryWarehouseError('')
                       }}
-                      placeholder="نام انبار جدید"
-                      aria-label="نام انبار جدید"
+                      placeholder={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
+                      aria-label={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
                       aria-invalid={Boolean(inventoryWarehouseError)}
                     />
-                    <button type="submit">افزودن انبار</button>
-                    <button className="inventory-warehouse-cancel" type="button" onClick={() => setInventoryWarehouseFormOpen(false)}>
+                    <button type="submit">{editingInventoryWarehouse ? 'ذخیره' : 'افزودن انبار'}</button>
+                    <button className="inventory-warehouse-cancel" type="button" onClick={() => {
+                      setInventoryWarehouseFormOpen(false)
+                      setEditingInventoryWarehouse(null)
+                      setInventoryWarehouseError('')
+                    }}>
                       انصراف
                     </button>
                   </form>
@@ -11294,6 +11643,7 @@ function App() {
                     aria-expanded={inventoryTaxonomyForm === 'group'}
                     onClick={() => {
                       setInventoryTaxonomyForm(inventoryTaxonomyForm === 'group' ? null : 'group')
+                      setEditingInventoryTaxonomy(null)
                       setInventoryTaxonomyInput('')
                       setInventoryTaxonomyError('')
                     }}
@@ -11312,18 +11662,40 @@ function App() {
                     همه
                   </button>
                   {inventoryGroups.map((group) => (
-                    <button
-                      className={inventoryGroup === group ? 'active' : ''}
+                    <span
+                      className="inventory-action-chip-wrap"
                       key={group}
-                      type="button"
-                      aria-pressed={inventoryGroup === group}
-                      onClick={() => {
-                        setInventoryGroup(group)
-                        setInventoryCategory('همه')
-                      }}
+                      onPointerDown={(event) => startInventoryActionPress(event, { type: 'group', name: group, kind: inventoryKind })}
+                      onPointerMove={moveInventoryActionPress}
+                      onPointerUp={clearInventoryActionPressTimer}
+                      onPointerCancel={clearInventoryActionPressTimer}
                     >
-                      {group}
-                    </button>
+                      <button
+                        className={inventoryGroup === group ? 'active' : ''}
+                        type="button"
+                        aria-pressed={inventoryGroup === group}
+                        onClick={(event) => {
+                          if (suppressInventoryActionClick.current) {
+                            suppressInventoryActionClick.current = false
+                            event.preventDefault()
+                            return
+                          }
+                          setInventoryGroup(group)
+                          setInventoryCategory('همه')
+                        }}
+                      >
+                        {group}
+                      </button>
+                      <button
+                        className="inventory-action-trigger"
+                        type="button"
+                        aria-label={`گزینه‌های گروه ${group}`}
+                        title={`گزینه‌های گروه ${group}`}
+                        onClick={(event) => activateInventoryActionItem(event, { type: 'group', name: group, kind: inventoryKind })}
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
+                    </span>
                   ))}
                 </div>
                 {inventoryTaxonomyForm === 'group' && (
@@ -11336,10 +11708,20 @@ function App() {
                         setInventoryTaxonomyInput(event.target.value)
                         setInventoryTaxonomyError('')
                       }}
-                      placeholder="نام گروه جدید"
-                      aria-label="نام گروه جدید"
+                      placeholder={editingInventoryTaxonomy ? 'نام جدید گروه' : 'نام گروه جدید'}
+                      aria-label={editingInventoryTaxonomy ? 'نام جدید گروه' : 'نام گروه جدید'}
                     />
-                    <button type="submit">افزودن</button>
+                    <button type="submit">{editingInventoryTaxonomy ? 'ذخیره' : 'افزودن'}</button>
+                    {editingInventoryTaxonomy && (
+                      <button className="inventory-taxonomy-cancel" type="button" onClick={() => {
+                        setEditingInventoryTaxonomy(null)
+                        setInventoryTaxonomyForm(null)
+                        setInventoryTaxonomyInput('')
+                        setInventoryTaxonomyError('')
+                      }}>
+                        انصراف
+                      </button>
+                    )}
                   </form>
                 )}
                 {inventoryTaxonomyForm === 'group' && inventoryTaxonomyError && (
@@ -11376,6 +11758,7 @@ function App() {
                     aria-expanded={inventoryTaxonomyForm === 'category'}
                     onClick={() => {
                       setInventoryTaxonomyForm(inventoryTaxonomyForm === 'category' ? null : 'category')
+                      setEditingInventoryTaxonomy(null)
                       setInventoryTaxonomyInput('')
                       setInventoryTaxonomyError('')
                     }}
@@ -11391,15 +11774,39 @@ function App() {
                     همه
                   </button>
                   {inventoryCategories.map((category) => (
-                    <button
-                      className={inventoryCategory === category ? 'active' : ''}
+                    <span
+                      className="inventory-action-chip-wrap"
                       key={category}
-                      type="button"
-                      aria-pressed={inventoryCategory === category}
-                      onClick={() => setInventoryCategory(category)}
+                      onPointerDown={(event) => startInventoryActionPress(event, { type: 'category', name: category, group: inventoryGroup })}
+                      onPointerMove={moveInventoryActionPress}
+                      onPointerUp={clearInventoryActionPressTimer}
+                      onPointerCancel={clearInventoryActionPressTimer}
                     >
-                      {category}
-                    </button>
+                      <button
+                        className={inventoryCategory === category ? 'active' : ''}
+                        type="button"
+                        aria-pressed={inventoryCategory === category}
+                        onClick={(event) => {
+                          if (suppressInventoryActionClick.current) {
+                            suppressInventoryActionClick.current = false
+                            event.preventDefault()
+                            return
+                          }
+                          setInventoryCategory(category)
+                        }}
+                      >
+                        {category}
+                      </button>
+                      <button
+                        className="inventory-action-trigger"
+                        type="button"
+                        aria-label={`گزینه‌های دسته‌بندی ${category}`}
+                        title={`گزینه‌های دسته‌بندی ${category}`}
+                        onClick={(event) => activateInventoryActionItem(event, { type: 'category', name: category, group: inventoryGroup })}
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
+                    </span>
                   ))}
                 </div>
                 {inventoryTaxonomyForm === 'category' && (
@@ -11412,16 +11819,43 @@ function App() {
                         setInventoryTaxonomyInput(event.target.value)
                         setInventoryTaxonomyError('')
                       }}
-                      placeholder="نام دسته‌بندی جدید"
-                      aria-label="نام دسته‌بندی جدید"
+                      placeholder={editingInventoryTaxonomy ? 'نام جدید دسته‌بندی' : 'نام دسته‌بندی جدید'}
+                      aria-label={editingInventoryTaxonomy ? 'نام جدید دسته‌بندی' : 'نام دسته‌بندی جدید'}
                     />
-                    <button type="submit">افزودن</button>
+                    <button type="submit">{editingInventoryTaxonomy ? 'ذخیره' : 'افزودن'}</button>
+                    {editingInventoryTaxonomy && (
+                      <button className="inventory-taxonomy-cancel" type="button" onClick={() => {
+                        setEditingInventoryTaxonomy(null)
+                        setInventoryTaxonomyForm(null)
+                        setInventoryTaxonomyInput('')
+                        setInventoryTaxonomyError('')
+                      }}>
+                        انصراف
+                      </button>
+                    )}
                   </form>
                 )}
                 {inventoryTaxonomyForm === 'category' && inventoryTaxonomyError && (
                   <p className="inventory-taxonomy-error" role="alert">{inventoryTaxonomyError}</p>
                 )}
               </section>
+
+              {inventoryActionItem && (
+                <div
+                  className="inventory-action-menu"
+                  role="menu"
+                  aria-label={`عملیات ${inventoryActionItem.type === 'warehouse' ? 'انبار' : inventoryActionItem.type === 'group' ? 'گروه' : 'دسته‌بندی'} ${inventoryActionItem.name}`}
+                  style={{ left: inventoryActionItem.x, top: inventoryActionItem.y }}
+                >
+                  <span className="inventory-action-menu-title">{inventoryActionItem.name}</span>
+                  <button type="button" role="menuitem" onClick={() => performInventoryAction('edit')}>
+                    ویرایش
+                  </button>
+                  <button className="delete" type="button" role="menuitem" onClick={() => performInventoryAction('delete')}>
+                    حذف
+                  </button>
+                </div>
+              )}
 
               <div className="inventory-search-row">
                 <div className="inventory-actions" ref={inventoryActionsRef}>
