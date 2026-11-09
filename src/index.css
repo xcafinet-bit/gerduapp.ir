@@ -41,8 +41,13 @@ body {
 }
 
 button,
+a,
 input,
 textarea,
-select {
+select,
+[role='button'],
+[role='tab'],
+[role='menuitem'] {
   font: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
