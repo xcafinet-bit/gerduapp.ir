@@ -15,6 +15,7 @@
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
+    "@zxing/browser": "^0.2.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-pageflip": "^2.0.3"

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
+import type { IScannerControls } from '@zxing/browser'
 import TrazinoBook from './TrazinoBook'
 import './App.css'
 
@@ -1791,6 +1792,7 @@ function App() {
   const [invoiceDesignOpen, setInvoiceDesignOpen] = useState(false)
   const [salesInvoiceLines, setSalesInvoiceLines] = useState<SalesInvoiceLine[]>([])
   const [salesInvoicePerson, setSalesInvoicePerson] = useState('')
+  const [salesInvoicePartyError, setSalesInvoicePartyError] = useState('')
   const [salesInvoicePersonSearch, setSalesInvoicePersonSearch] = useState('')
   const [storedSalesInvoices, setStoredSalesInvoices] = useState<StoredSalesInvoices>(() => readStoredSalesInvoices(activeStoreId))
   const [storedPurchaseInvoices, setStoredPurchaseInvoices] = useState<StoredPurchaseInvoices>(
@@ -1878,6 +1880,15 @@ function App() {
   const [salesInvoicePersonOptionsOpen, setSalesInvoicePersonOptionsOpen] = useState(false)
   const [salesInvoicePersonPickerOpen, setSalesInvoicePersonPickerOpen] = useState(false)
   const [salesInvoicePersonPickerSearch, setSalesInvoicePersonPickerSearch] = useState('')
+  const [salesInvoicePersonPickerStatus, setSalesInvoicePersonPickerStatus] = useState<
+    'همه' | 'بدهکاران' | 'بستانکاران'
+  >('همه')
+  const [salesInvoicePersonPickerGroup, setSalesInvoicePersonPickerGroup] = useState(allAccountReportGroups)
+  const [salesInvoicePersonPickerGroupFormOpen, setSalesInvoicePersonPickerGroupFormOpen] = useState(false)
+  const [salesInvoicePersonPickerGroupName, setSalesInvoicePersonPickerGroupName] = useState('')
+  const [salesInvoicePersonPickerGroupError, setSalesInvoicePersonPickerGroupError] = useState('')
+  const [salesInvoicePersonPickerReturnTab, setSalesInvoicePersonPickerReturnTab] = useState<string | null>(null)
+  const [personFormRole, setPersonFormRole] = useState('شخص')
   const [todayInvoiceDate, setTodayInvoiceDate] = useState(
     () => new Date(`${getIranDateValue(new Date())}T12:00:00Z`),
   )
@@ -1904,6 +1915,9 @@ function App() {
   const [salesInvoiceCatalogCategory, setSalesInvoiceCatalogCategory] = useState('همه')
   const [salesInvoiceCatalogSearch, setSalesInvoiceCatalogSearch] = useState('')
   const [salesInvoiceItemSearch, setSalesInvoiceItemSearch] = useState('')
+  const [salesInvoiceBarcodeMode, setSalesInvoiceBarcodeMode] = useState(false)
+  const [salesInvoiceBarcodeScannerOpen, setSalesInvoiceBarcodeScannerOpen] = useState(false)
+  const [salesInvoiceBarcodeScannerError, setSalesInvoiceBarcodeScannerError] = useState('')
   const [salesInvoiceItemOptionsOpen, setSalesInvoiceItemOptionsOpen] = useState(true)
   const [salesInvoiceDraftItem, setSalesInvoiceDraftItem] = useState<InventoryRecord | null>(null)
   const [salesInvoiceDraftDescription, setSalesInvoiceDraftDescription] = useState('')
@@ -1918,10 +1932,14 @@ function App() {
   const [salesInvoiceAdjustmentValue, setSalesInvoiceAdjustmentValue] = useState(0)
   const [salesInvoiceAdjustmentAffectsProfit, setSalesInvoiceAdjustmentAffectsProfit] = useState(true)
   const [salesInvoiceNote, setSalesInvoiceNote] = useState('')
+  const [salesInvoiceNoteDialogOpen, setSalesInvoiceNoteDialogOpen] = useState(false)
+  const [salesInvoiceNoteDraft, setSalesInvoiceNoteDraft] = useState('')
   const [salesInvoiceAttachment, setSalesInvoiceAttachment] = useState<{ file: File; previewUrl: string } | null>(null)
   const [salesInvoiceDraftAttachment, setSalesInvoiceDraftAttachment] = useState<{ file: File; previewUrl: string } | null>(null)
   const [salesInvoiceAttachmentPickerOpen, setSalesInvoiceAttachmentPickerOpen] = useState(false)
   const [salesInvoiceAttachmentError, setSalesInvoiceAttachmentError] = useState('')
+  const salesInvoiceBarcodeVideoRef = useRef<HTMLVideoElement>(null)
+  const lastScannedBarcodeRef = useRef('')
   const [peopleSearch, setPeopleSearch] = useState('')
   const [peopleFilter, setPeopleFilter] = useState('همه')
   const [accountReportGroup, setAccountReportGroup] = useState(allAccountReportGroups)
@@ -2008,6 +2026,13 @@ function App() {
   const [editingPeopleGroup, setEditingPeopleGroup] = useState<string | null>(null)
   const [peopleGroupMenu, setPeopleGroupMenu] = useState<PeopleGroupMenu | null>(null)
   const [peopleGroupError, setPeopleGroupError] = useState('')
+  const closePersonForm = useCallback(() => {
+    setPersonFormOpen(false)
+    if (!salesInvoicePersonPickerReturnTab) return
+    setActiveTab(salesInvoicePersonPickerReturnTab)
+    setSalesInvoicePersonPickerReturnTab(null)
+    setSalesInvoicePersonPickerOpen(true)
+  }, [salesInvoicePersonPickerReturnTab])
   const peopleFiltersRef = useRef<HTMLDivElement>(null)
   const inventoryGroupsRef = useRef<HTMLDivElement>(null)
   const inventoryCategoriesRef = useRef<HTMLDivElement>(null)
@@ -2055,6 +2080,8 @@ function App() {
       !salesInvoiceDatePickerOpen
       && !salesInvoiceTimePickerOpen
       && !salesInvoiceAttachmentPickerOpen
+      && !salesInvoiceNoteDialogOpen
+      && !salesInvoiceBarcodeScannerOpen
       && !salesInvoiceReceiptOpen
       && !moneyDocumentKind
       && !salesInvoiceReceiptDatePickerOpen
@@ -2074,6 +2101,8 @@ function App() {
         setSalesInvoiceDatePickerOpen(false)
         setSalesInvoiceTimePickerOpen(false)
         setSalesInvoiceAttachmentPickerOpen(false)
+        setSalesInvoiceNoteDialogOpen(false)
+        setSalesInvoiceBarcodeScannerOpen(false)
         setSalesInvoiceReceiptOpen(false)
         setMoneyDocumentKind(null)
         setMoneyDocumentError('')
@@ -2108,6 +2137,8 @@ function App() {
     salesInvoiceDatePickerOpen,
     salesInvoiceTimePickerOpen,
     salesInvoiceAttachmentPickerOpen,
+    salesInvoiceNoteDialogOpen,
+    salesInvoiceBarcodeScannerOpen,
     salesInvoiceReceiptOpen,
     moneyDocumentKind,
     salesInvoiceReceiptDatePickerOpen,
@@ -2249,6 +2280,12 @@ function App() {
     ?? salesInvoiceEditingInvoice?.number
     ?? `۱۳۰۰۰۰${formatPersonCode(345 + storedSalesInvoices.invoices.length)}`
   const purchaseInvoiceMode = activeTab === 'فاکتور خرید'
+  const returnSalesInvoiceMode = activeTab === 'برگشت از فروش'
+  const returnPurchaseInvoiceMode = activeTab === 'برگشت به خرید'
+  const returnInvoiceMode = returnSalesInvoiceMode || returnPurchaseInvoiceMode
+  const purchaseInvoicePartyMode = purchaseInvoiceMode || returnPurchaseInvoiceMode
+  const returnSalesInvoiceNumber = `۲۳۰۰۰۰۰${formatPersonCode(storedSalesInvoices.invoices.length + 1)}`
+  const returnPurchaseInvoiceNumber = `۲۵۰۰۰۰۰${formatPersonCode(storedPurchaseInvoices.invoices.length + 1)}`
   const purchaseInvoiceNumber = `۲۴۰۰۰۰${formatPersonCode(storedPurchaseInvoices.invoices.length + 1)}`
   const salesInvoiceListRows = [...storedSalesInvoices.invoices]
     .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
@@ -2269,7 +2306,7 @@ function App() {
     0,
     (salesInvoiceConfirmation?.total ?? 0) - salesInvoiceReceivedTotal,
   )
-  const invoicePeople = purchaseInvoiceMode
+  const invoicePeople = purchaseInvoicePartyMode
     ? allPeople.filter((person) => person.role === 'تأمین‌کننده')
     : allPeople
   const filteredSalesInvoicePeople = invoicePeople.filter((person) => (
@@ -2278,7 +2315,9 @@ function App() {
       .includes(salesInvoicePersonSearch.trim().toLocaleLowerCase())
   ))
   const filteredSalesInvoicePickerPeople = invoicePeople.filter((person) => (
-    `${person.name} ${person.phone} ${person.code}`
+    (salesInvoicePersonPickerStatus === 'همه' || person.accountStatus === salesInvoicePersonPickerStatus)
+    && (salesInvoicePersonPickerGroup === allAccountReportGroups || person.group === salesInvoicePersonPickerGroup)
+    && `${person.name} ${person.phone} ${person.code}`
       .toLocaleLowerCase()
       .includes(salesInvoicePersonPickerSearch.trim().toLocaleLowerCase())
   ))
@@ -2770,11 +2809,11 @@ function App() {
   useEffect(() => {
     if (!personFormOpen) return
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPersonFormOpen(false)
+      if (event.key === 'Escape') closePersonForm()
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [personFormOpen])
+  }, [personFormOpen, closePersonForm])
 
   useEffect(() => {
     if (!backupImport) return
@@ -2852,7 +2891,19 @@ function App() {
     setSalesInvoiceLines([])
     setSalesInvoiceAdjustments([])
     setSalesInvoicePerson('')
+    setSalesInvoicePartyError('')
     setSalesInvoiceNote('')
+    setSalesInvoiceBarcodeScannerOpen(false)
+    setSalesInvoiceBarcodeScannerError('')
+    setSalesInvoicePersonPickerOpen(false)
+    setSalesInvoicePersonPickerStatus('همه')
+    setSalesInvoicePersonPickerGroup(allAccountReportGroups)
+    setSalesInvoicePersonPickerGroupFormOpen(false)
+    setSalesInvoicePersonPickerGroupName('')
+    setSalesInvoicePersonPickerGroupError('')
+    setSalesInvoicePersonPickerReturnTab(null)
+    setSalesInvoiceNoteDialogOpen(false)
+    setSalesInvoiceNoteDraft('')
     setSalesInvoiceConfirmation(null)
     setSalesInvoiceMoreOpen(false)
     setSalesInvoicePaymentMenuOpen(false)
@@ -3828,6 +3879,7 @@ function App() {
     setSalesInvoiceMoreOpen(false)
     setSalesInvoicePaymentMenuOpen(false)
     setSalesInvoiceSaveError('')
+    setSalesInvoicePartyError('')
     if (salesInvoiceAttachment) {
       releaseSalesInvoiceAttachmentUrl(salesInvoiceAttachment.previewUrl)
     }
@@ -3856,6 +3908,16 @@ function App() {
   const openPurchaseInvoice = () => {
     openSalesInvoice()
     setActiveTab('فاکتور خرید')
+  }
+
+  const openReturnSalesInvoice = () => {
+    openSalesInvoice()
+    setActiveTab('برگشت از فروش')
+  }
+
+  const openReturnPurchaseInvoice = () => {
+    openSalesInvoice()
+    setActiveTab('برگشت به خرید')
   }
 
   const openSalesInvoiceDatePicker = () => {
@@ -3893,6 +3955,11 @@ function App() {
     setSalesInvoiceDraftAttachment(salesInvoiceAttachment)
     setSalesInvoiceAttachmentError('')
     setSalesInvoiceAttachmentPickerOpen(true)
+  }
+
+  const openSalesInvoiceNoteDialog = () => {
+    setSalesInvoiceNoteDraft(salesInvoiceNote.trim())
+    setSalesInvoiceNoteDialogOpen(true)
   }
 
   const closeSalesInvoiceAttachmentPicker = () => {
@@ -5031,6 +5098,7 @@ function App() {
   }
 
   const openSalesInvoiceItemPicker = () => {
+    setSalesInvoiceBarcodeMode(false)
     setSalesInvoiceItemSearch('')
     setSalesInvoiceItemOptionsOpen(false)
     setSalesInvoiceDraftItem(null)
@@ -5042,21 +5110,109 @@ function App() {
     setSalesInvoiceItemPickerOpen(true)
   }
 
-  const selectSalesInvoiceItem = (item: InventoryRecord) => {
+  const openSalesInvoiceBarcodePicker = () => {
+    setSalesInvoiceBarcodeMode(false)
+    setSalesInvoiceBarcodeScannerError('')
+    lastScannedBarcodeRef.current = ''
+    setSalesInvoiceBarcodeScannerOpen(true)
+  }
+
+  const selectSalesInvoiceItem = useCallback((item: InventoryRecord) => {
+    setSalesInvoiceBarcodeMode(false)
     setSalesInvoiceDraftItem(item)
     setSalesInvoiceItemSearch(item.name)
     setSalesInvoiceItemOptionsOpen(false)
     setSalesInvoiceCatalogOpen(false)
     setSalesInvoiceDraftDescription(item.name)
     setSalesInvoiceDraftQuantity(1)
-    setSalesInvoiceDraftPrice(purchaseInvoiceMode
+    setSalesInvoiceDraftPrice(purchaseInvoicePartyMode
       ? item.purchasePrice
       : salesInvoiceSettings.autoSalesPricePercent && item.purchasePrice > 0
         ? Math.round(item.purchasePrice * (1 + salesInvoiceSettings.salePriceMarkupPercent / 100))
         : item.salePrice)
     setSalesInvoiceDraftDiscountPercent(0)
     setSalesInvoiceDraftDiscountAmount(0)
-  }
+  }, [purchaseInvoicePartyMode, salesInvoiceSettings])
+
+  useEffect(() => {
+    if (!salesInvoiceBarcodeScannerOpen) return
+
+    const video = salesInvoiceBarcodeVideoRef.current
+    if (!video) {
+      setSalesInvoiceBarcodeScannerError('نمایشگر دوربین آماده نشد. پنجره را ببندید و دوباره تلاش کنید.')
+      return
+    }
+
+    let disposed = false
+    let resultHandled = false
+    let controls: IScannerControls | null = null
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setSalesInvoiceBarcodeScannerError('برای استفاده از دوربین، برنامه باید در بستر امن (HTTPS) باز شود.')
+      return
+    }
+
+    const handleScanError = (error: unknown) => {
+      if (disposed) return
+      const errorName = error instanceof Error ? error.name : ''
+      setSalesInvoiceBarcodeScannerError(
+        errorName === 'NotAllowedError'
+          ? 'دسترسی به دوربین رد شد. اجازهٔ استفاده از دوربین را در تنظیمات مرورگر فعال کنید.'
+          : errorName === 'NotFoundError' || errorName === 'OverconstrainedError'
+            ? 'دوربینی برای اسکن بارکد پیدا نشد.'
+            : errorName === 'NotReadableError'
+              ? 'دوربین در حال استفاده است. برنامه‌های دیگرِ استفاده‌کننده از دوربین را ببندید.'
+              : errorName === 'SecurityError'
+                ? 'برای استفاده از دوربین، برنامه باید در بستر امن (HTTPS) باز شود.'
+                : 'راه‌اندازی دوربین انجام نشد. دسترسی دوربین را بررسی و دوباره تلاش کنید.',
+      )
+    }
+
+    const startScanner = async () => {
+      try {
+        const { BrowserMultiFormatReader } = await import('@zxing/browser')
+        if (disposed) return
+        const reader = new BrowserMultiFormatReader()
+        controls = await reader.decodeFromVideoDevice(undefined, video, (result) => {
+          if (!result || disposed || resultHandled) return
+
+          const barcode = result.getText().trim()
+          if (!barcode) return
+          const item = inventoryItems.find((inventoryItem) => (
+            inventoryItem.barcode?.trim() === barcode || inventoryItem.code?.trim() === barcode
+          ))
+
+          if (!item) {
+            if (lastScannedBarcodeRef.current !== barcode) {
+              lastScannedBarcodeRef.current = barcode
+              setSalesInvoiceBarcodeScannerError(`کالایی با بارکد «${barcode}» در فهرست کالاها پیدا نشد.`)
+            }
+            return
+          }
+
+          resultHandled = true
+          controls?.stop()
+          setSalesInvoiceBarcodeScannerError('')
+          setSalesInvoiceBarcodeScannerOpen(false)
+          setSalesInvoiceItemPickerOpen(true)
+          selectSalesInvoiceItem(item)
+        })
+        if (disposed) controls.stop()
+      } catch (error) {
+        handleScanError(error)
+      }
+    }
+
+    void startScanner()
+
+    return () => {
+      disposed = true
+      controls?.stop()
+    }
+  }, [
+    inventoryItems,
+    salesInvoiceBarcodeScannerOpen,
+    selectSalesInvoiceItem,
+  ])
 
   const openSalesInvoiceCatalog = () => {
     setSalesInvoiceCatalogKind('کالا')
@@ -5082,7 +5238,11 @@ function App() {
       ? salesInvoiceDraftDescription.trim() || salesInvoiceDraftItem.name
       : salesInvoiceDraftItem.name
 
-    if (salesInvoiceSettings.updateInventoryPrice && salesInvoiceDraftPrice !== salesInvoiceDraftItem.salePrice) {
+    if (
+      !returnInvoiceMode
+      && salesInvoiceSettings.updateInventoryPrice
+      && salesInvoiceDraftPrice !== salesInvoiceDraftItem.salePrice
+    ) {
       if (storedInventoryRecords.error) {
         setNotice(storedInventoryRecords.error)
         window.setTimeout(() => setNotice(''), 2600)
@@ -5150,7 +5310,9 @@ function App() {
   }
 
   const openSalesInvoiceAdjustment = (kind: SalesInvoiceAdjustmentKind) => {
-    setSalesInvoiceAdjustmentDescription('')
+    setSalesInvoiceAdjustmentDescription(returnInvoiceMode
+      ? kind === 'addition' ? 'مالیات' : 'تخفیف'
+      : '')
     setSalesInvoiceAdjustmentMode('percent')
     setSalesInvoiceAdjustmentValue(0)
     setSalesInvoiceAdjustmentAffectsProfit(true)
@@ -5840,11 +6002,14 @@ function App() {
     }
   }
 
-  const openPersonForm = () => {
+  const openPersonForm = (role = 'شخص', groupOverride?: string) => {
     const nextCode = Math.max(999, ...allPeople.map((person) => parsePersonCode(person.code))) + 1
-    const selectedGroup = peopleGroupState.groups.includes(peopleFilter)
-      ? peopleFilter
+    const selectedGroup = peopleGroupState.groups.includes(groupOverride ?? '')
+      ? groupOverride ?? ''
+      : peopleGroupState.groups.includes(peopleFilter)
+        ? peopleFilter
       : peopleGroupState.groups.length === 1 ? peopleGroupState.groups[0] : ''
+    setPersonFormRole(role)
     setPersonFormFields({
       ...emptyPersonForm,
       code: formatPersonCode(nextCode),
@@ -5894,7 +6059,7 @@ function App() {
       code: personFormFields.code,
       name,
       group: personFormFields.group,
-      role: 'شخص',
+      role: personFormRole,
       phone: personFormFields.phone.trim(),
       address: personFormFields.address.trim(),
       accountNumber: personFormFields.accountNumber.trim(),
@@ -5917,6 +6082,15 @@ function App() {
       setPeopleFilter('همه')
       setPersonFormOpen(false)
       setPersonFormError('')
+      if (salesInvoicePersonPickerReturnTab) {
+        setSalesInvoicePerson(person.id)
+        setSalesInvoicePartyError('')
+        setSalesInvoicePersonSearch('')
+        setSalesInvoicePersonPickerSearch('')
+        setSalesInvoicePersonPickerReturnTab(null)
+        setSalesInvoicePersonPickerOpen(false)
+        setActiveTab(salesInvoicePersonPickerReturnTab)
+      }
     } catch {
       setPersonFormError('ذخیرهٔ شخص انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
     }
@@ -5971,6 +6145,41 @@ function App() {
       setPeopleGroupError('')
     } catch {
       setPeopleGroupError('ذخیرهٔ تغییر گروه انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+    }
+  }
+
+  const addSalesInvoicePickerGroup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const group = salesInvoicePersonPickerGroupName.trim()
+    if (!group) {
+      setSalesInvoicePersonPickerGroupError('نام گروه را وارد کنید.')
+      return
+    }
+    if (peopleGroupState.error) {
+      setSalesInvoicePersonPickerGroupError(peopleGroupState.error)
+      return
+    }
+    if (group.toLocaleLowerCase() === allAccountReportGroups.toLocaleLowerCase()
+      || [...peopleFilters, ...peopleGroupState.groups].some((existing) => (
+        existing.toLocaleLowerCase() === group.toLocaleLowerCase()
+      ))) {
+      setSalesInvoicePersonPickerGroupError('این گروه از قبل وجود دارد.')
+      return
+    }
+
+    const groups = [...peopleGroupState.groups, group]
+    try {
+      localStorage.setItem(
+        getActiveStoreDataStorageKey(PEOPLE_GROUPS_STORAGE_KEY, activeStoreId),
+        JSON.stringify(groups),
+      )
+      setPeopleGroupState({ groups, error: '' })
+      setSalesInvoicePersonPickerGroup(group)
+      setSalesInvoicePersonPickerGroupName('')
+      setSalesInvoicePersonPickerGroupFormOpen(false)
+      setSalesInvoicePersonPickerGroupError('')
+    } catch {
+      setSalesInvoicePersonPickerGroupError('ذخیرهٔ گروه انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
     }
   }
 
@@ -6418,7 +6627,7 @@ function App() {
   const visibleAccounts = storedAccounts.accounts.filter((account) => account.kind === accountListFilter)
 
   return (
-    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${activeTab === 'فاکتور فروش' || activeTab === 'فاکتور خرید' ? 'sales-invoice-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
+    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${activeTab === 'فاکتور فروش' || activeTab === 'فاکتور خرید' || activeTab === 'برگشت از فروش' || activeTab === 'برگشت به خرید' ? 'sales-invoice-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
       <header className="topbar">
         <div className="brand">
           <img
@@ -7147,7 +7356,9 @@ function App() {
                         <div>
                           <span>شخصی‌سازی ثبت فاکتور</span>
                           <h2 id="sales-invoice-settings-title">
-                            {purchaseInvoiceMode ? 'تنظیمات فاکتور خرید' : 'تنظیمات فاکتور فروش'}
+                            {returnPurchaseInvoiceMode
+                              ? 'تنظیمات فاکتور برگشت به خرید'
+                              : purchaseInvoiceMode ? 'تنظیمات فاکتور خرید' : 'تنظیمات فاکتور فروش'}
                           </h2>
                         </div>
                         <button
@@ -7952,7 +8163,7 @@ function App() {
               </button>
             </footer>
           </section>
-        ) : activeTab === 'فاکتور فروش' || activeTab === 'فاکتور خرید' ? (
+        ) : activeTab === 'فاکتور فروش' || activeTab === 'فاکتور خرید' || activeTab === 'برگشت از فروش' || activeTab === 'برگشت به خرید' ? (
           salesInvoiceConfirmation ? (
             <div className="sales-invoice-confirmation-page">
               <header className="sales-invoice-confirmation-header">
@@ -8931,7 +9142,9 @@ function App() {
               <button
                 className="sales-invoice-back"
                 type="button"
-                aria-label={salesInvoiceEditingInvoice ? 'لغو اصلاح فاکتور' : 'بازگشت به داشبورد'}
+                aria-label={salesInvoiceEditingInvoice
+                  ? 'لغو اصلاح فاکتور'
+                  : 'بازگشت به داشبورد'}
                 onClick={() => {
                   if (salesInvoiceEditingInvoice) {
                     setSalesInvoiceConfirmation(salesInvoiceEditingInvoice)
@@ -8948,17 +9161,31 @@ function App() {
                 <span>
                   {purchaseInvoiceMode
                     ? 'ثبت سند خرید'
-                    : salesInvoiceEditingInvoice ? 'اصلاح سند فروش' : 'ثبت سند فروش'}
+                    : returnSalesInvoiceMode
+                      ? 'ثبت سند برگشت از فروش'
+                      : returnPurchaseInvoiceMode
+                        ? 'ثبت سند برگشت به خرید'
+                      : salesInvoiceEditingInvoice ? 'اصلاح سند فروش' : 'ثبت سند فروش'}
                 </span>
                 <h1>
                   {purchaseInvoiceMode
                     ? 'فاکتور خرید'
-                    : salesInvoiceEditingInvoice ? 'اصلاح فاکتور فروش' : 'فاکتور فروش'}
+                    : returnSalesInvoiceMode
+                      ? 'فاکتور برگشت از فروش'
+                      : returnPurchaseInvoiceMode
+                        ? 'فاکتور برگشت به خرید'
+                      : salesInvoiceEditingInvoice ? 'اصلاح فاکتور فروش' : 'فاکتور فروش'}
                 </h1>
               </div>
               <div className="sales-invoice-number">
                 <span>شماره</span>
-                <strong>{purchaseInvoiceMode ? purchaseInvoiceNumber : salesInvoiceNumber}</strong>
+                <strong>
+                  {purchaseInvoiceMode
+                    ? purchaseInvoiceNumber
+                    : returnSalesInvoiceMode
+                      ? returnSalesInvoiceNumber
+                      : returnPurchaseInvoiceMode ? returnPurchaseInvoiceNumber : salesInvoiceNumber}
+                </strong>
               </div>
               <button
                 className="sales-invoice-settings"
@@ -8971,9 +9198,21 @@ function App() {
               <button
                 className="sales-invoice-print"
                 type="button"
-                aria-label={purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
-                title={purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
-                onClick={() => purchaseInvoiceMode
+                aria-label={returnPurchaseInvoiceMode
+                  ? 'چاپ فاکتور برگشت به خرید'
+                  : returnSalesInvoiceMode
+                    ? 'چاپ فاکتور برگشت از فروش'
+                    : purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
+                title={returnPurchaseInvoiceMode
+                  ? 'چاپ فاکتور برگشت به خرید'
+                  : returnSalesInvoiceMode
+                    ? 'چاپ فاکتور برگشت از فروش'
+                    : purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
+                onClick={() => returnPurchaseInvoiceMode
+                  ? showSalesInvoiceShareNotice('چاپ فاکتور برگشت به خرید در مرحلهٔ بعدی تکمیل می‌شود.')
+                  : returnSalesInvoiceMode
+                    ? showSalesInvoiceShareNotice('چاپ فاکتور برگشت از فروش در مرحلهٔ بعدی تکمیل می‌شود.')
+                    : purchaseInvoiceMode
                   ? showSalesInvoiceShareNotice('چاپ فاکتور خرید در مرحلهٔ بعدی فعال می‌شود.')
                   : printSalesInvoice()}
               >
@@ -8984,28 +9223,39 @@ function App() {
             <div className="sales-invoice-content">
               <section
                 className="sales-invoice-party"
-                aria-label={purchaseInvoiceMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
+                aria-label={returnSalesInvoiceMode
+                    ? 'طرف حساب فاکتور برگشت از فروش'
+                    : returnPurchaseInvoiceMode
+                      ? 'تأمین‌کننده فاکتور برگشت به خرید'
+                      : purchaseInvoiceMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
               >
                 <span className="sales-invoice-party-label">
-                  {purchaseInvoiceMode ? 'تأمین‌کننده' : 'طرف حساب'}
+                  {purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'طرف حساب'}
                 </span>
                 <div className="sales-invoice-party-control">
                   <label className="sales-invoice-party-search">
                     <input
                       type="search"
                       role="combobox"
-                      aria-label={purchaseInvoiceMode
+                      aria-label={purchaseInvoicePartyMode
                         ? 'جست‌وجو و انتخاب تأمین‌کننده'
-                        : 'جست‌وجو و انتخاب طرف حساب'}
+                        : returnSalesInvoiceMode
+                          ? 'جست‌وجو و انتخاب مشتری فاکتور برگشت'
+                          : 'جست‌وجو و انتخاب طرف حساب'}
                       aria-required="true"
-                      aria-describedby="sales-invoice-party-required"
+                      aria-invalid={Boolean(salesInvoicePartyError)}
+                      aria-describedby={salesInvoicePartyError
+                        ? 'sales-invoice-party-required sales-invoice-party-error'
+                        : 'sales-invoice-party-required'}
                       aria-autocomplete="list"
                       aria-expanded={salesInvoicePersonOptionsOpen}
                       aria-controls="sales-invoice-person-options"
                       value={salesInvoicePersonSearch || selectedSalesInvoicePerson?.name || ''}
-                      placeholder={purchaseInvoiceMode
+                      placeholder={purchaseInvoicePartyMode
                         ? 'نام، شماره تماس یا کد تأمین‌کننده'
-                        : 'نام، شماره تماس یا کد طرف حساب'}
+                        : returnSalesInvoiceMode
+                          ? 'نام، شماره تماس یا کد مشتری'
+                          : 'نام، شماره تماس یا کد طرف حساب'}
                       onFocus={() => {
                         setSalesInvoicePersonSearch('')
                         setSalesInvoicePersonOptionsOpen(true)
@@ -9022,9 +9272,11 @@ function App() {
                         className="sales-invoice-person-options"
                         id="sales-invoice-person-options"
                         role="listbox"
-                        aria-label={purchaseInvoiceMode
+                        aria-label={purchaseInvoicePartyMode
                           ? 'نتایج جست‌وجوی تأمین‌کننده'
-                          : 'نتایج جست‌وجوی طرف حساب'}
+                          : returnSalesInvoiceMode
+                            ? 'نتایج جست‌وجوی مشتری'
+                            : 'نتایج جست‌وجوی طرف حساب'}
                       >
                         {filteredSalesInvoicePeople.map((person) => (
                           <button
@@ -9035,6 +9287,7 @@ function App() {
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => {
                               setSalesInvoicePerson(person.id)
+                              setSalesInvoicePartyError('')
                               setSalesInvoicePersonSearch('')
                               setSalesInvoicePersonOptionsOpen(false)
                               setSalesInvoiceSaveError('')
@@ -9046,9 +9299,11 @@ function App() {
                         ))}
                         {filteredSalesInvoicePeople.length === 0 && (
                           <p>
-                            {purchaseInvoiceMode
+                            {purchaseInvoicePartyMode
                               ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
-                              : 'طرف حسابی با این مشخصات پیدا نشد.'}
+                              : returnSalesInvoiceMode
+                                ? 'مشتری‌ای با این مشخصات پیدا نشد.'
+                                : 'طرف حسابی با این مشخصات پیدا نشد.'}
                           </p>
                         )}
                       </div>
@@ -9056,13 +9311,18 @@ function App() {
                   </label>
                   <button
                     type="button"
-                    aria-label={purchaseInvoiceMode
+                    aria-label={purchaseInvoicePartyMode
                       ? 'نمایش فهرست تأمین‌کنندگان'
-                      : 'نمایش فهرست اشخاص'}
+                      : returnSalesInvoiceMode ? 'نمایش فهرست مشتریان' : 'نمایش فهرست اشخاص'}
                     aria-haspopup="dialog"
                     aria-expanded={salesInvoicePersonPickerOpen}
                     onClick={() => {
                       setSalesInvoicePersonPickerSearch('')
+                      setSalesInvoicePersonPickerStatus('همه')
+                      setSalesInvoicePersonPickerGroup(allAccountReportGroups)
+                      setSalesInvoicePersonPickerGroupFormOpen(false)
+                      setSalesInvoicePersonPickerGroupName('')
+                      setSalesInvoicePersonPickerGroupError('')
                       setSalesInvoicePersonPickerOpen(true)
                     }}
                   >
@@ -9070,20 +9330,37 @@ function App() {
                   </button>
                 </div>
                 <small id="sales-invoice-party-required" className="sales-invoice-party-required">
-                  {purchaseInvoiceMode
-                    ? 'انتخاب تأمین‌کننده برای ثبت فاکتور خرید الزامی است'
-                    : 'انتخاب طرف‌حساب برای ثبت فاکتور الزامی است'}
+                  {returnSalesInvoiceMode
+                      ? 'طرف‌حساب فاکتور برگشت از فروش'
+                      : returnPurchaseInvoiceMode
+                        ? 'انتخاب تأمین‌کننده برای فاکتور برگشت به خرید'
+                        : purchaseInvoiceMode
+                          ? 'انتخاب تأمین‌کننده برای ثبت فاکتور خرید الزامی است'
+                          : 'انتخاب طرف‌حساب برای ثبت فاکتور الزامی است'}
                 </small>
+                {salesInvoicePartyError && (
+                  <small id="sales-invoice-party-error" className="sales-invoice-party-error" role="alert">
+                    {salesInvoicePartyError}
+                  </small>
+                )}
               </section>
 
               <section
                 className="sales-invoice-meta"
-                aria-label={purchaseInvoiceMode ? 'اطلاعات فاکتور خرید' : 'اطلاعات فاکتور فروش'}
+                aria-label={returnSalesInvoiceMode
+                    ? 'اطلاعات فاکتور برگشت از فروش'
+                    : returnPurchaseInvoiceMode
+                      ? 'اطلاعات فاکتور برگشت به خرید'
+                      : purchaseInvoiceMode ? 'اطلاعات فاکتور خرید' : 'اطلاعات فاکتور فروش'}
               >
                 <button
                   className="sales-invoice-meta-pill sales-invoice-date-trigger"
                   type="button"
-                  aria-label={purchaseInvoiceMode ? 'انتخاب تاریخ فاکتور خرید' : 'انتخاب تاریخ فاکتور'}
+                  aria-label={returnPurchaseInvoiceMode
+                    ? 'انتخاب تاریخ فاکتور برگشت به خرید'
+                    : returnSalesInvoiceMode
+                      ? 'انتخاب تاریخ فاکتور برگشت از فروش'
+                      : purchaseInvoiceMode ? 'انتخاب تاریخ فاکتور خرید' : 'انتخاب تاریخ فاکتور'}
                   onClick={openSalesInvoiceDatePicker}
                 >
                   <span aria-hidden="true">▦</span>
@@ -9093,7 +9370,11 @@ function App() {
                 <button
                   className="sales-invoice-meta-pill sales-invoice-time-trigger"
                   type="button"
-                  aria-label={purchaseInvoiceMode ? 'انتخاب ساعت فاکتور خرید' : 'انتخاب ساعت فاکتور'}
+                  aria-label={returnPurchaseInvoiceMode
+                    ? 'انتخاب ساعت فاکتور برگشت به خرید'
+                    : returnSalesInvoiceMode
+                      ? 'انتخاب ساعت فاکتور برگشت از فروش'
+                      : purchaseInvoiceMode ? 'انتخاب ساعت فاکتور خرید' : 'انتخاب ساعت فاکتور'}
                   onClick={openSalesInvoiceTimePicker}
                 >
                   <span aria-hidden="true">◷</span>
@@ -9102,9 +9383,14 @@ function App() {
                 <button
                   className={salesInvoiceNote ? 'active' : ''}
                   type="button"
-                  aria-label={purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور'}
-                  aria-expanded={Boolean(salesInvoiceNote)}
-                  onClick={() => setSalesInvoiceNote(salesInvoiceNote ? '' : ' ')}
+                  aria-label={returnInvoiceMode
+                    ? `افزودن توضیحات به سند ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                    : purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور'}
+                  aria-haspopup={returnInvoiceMode ? 'dialog' : undefined}
+                  aria-expanded={returnInvoiceMode ? salesInvoiceNoteDialogOpen : Boolean(salesInvoiceNote)}
+                  onClick={() => returnInvoiceMode
+                    ? openSalesInvoiceNoteDialog()
+                    : setSalesInvoiceNote(salesInvoiceNote ? '' : ' ')}
                 >
                   <span aria-hidden="true">▤</span>
                   یادداشت
@@ -9112,7 +9398,12 @@ function App() {
                 <button
                   className={salesInvoiceAttachment ? 'active' : ''}
                   type="button"
-                  aria-label={salesInvoiceAttachment ? 'مدیریت پیوست' : 'افزودن پیوست'}
+                  aria-label={returnInvoiceMode
+                    ? salesInvoiceAttachment
+                      ? `مدیریت پیوست فاکتور ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                      : `افزودن پیوست به فاکتور ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                    : salesInvoiceAttachment ? 'مدیریت پیوست' : 'افزودن پیوست'}
+                  aria-haspopup="dialog"
                   aria-expanded={salesInvoiceAttachmentPickerOpen}
                   onClick={openSalesInvoiceAttachmentPicker}
                 >
@@ -9121,7 +9412,7 @@ function App() {
                 </button>
               </section>
 
-              {salesInvoiceNote !== '' && (
+              {salesInvoiceNote !== '' && !returnInvoiceMode && (
                 <textarea
                   className="sales-invoice-note"
                   aria-label={purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور فروش'}
@@ -9268,7 +9559,7 @@ function App() {
                         </span>
                         <b>
                           {adjustment.kind === 'deduction' ? '−' : '+'}
-                          {formatPersonBalance(amount)} ریال
+                          {formatPersonBalance(amount)} {returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}
                         </b>
                         <button
                           type="button"
@@ -9287,19 +9578,27 @@ function App() {
 
               <div className="sales-invoice-total">
                 <span>
-                  جمع فاکتور
+                  {returnInvoiceMode ? 'مبلغ فاکتور' : 'جمع فاکتور'}
                   {salesInvoiceAdjustments.length > 0 && (
                     <small>جمع اقلام {formatPersonBalance(salesInvoiceSubtotal)} ریال</small>
                   )}
                 </span>
-                <strong>{formatPersonBalance(salesInvoiceTotal)} <small>ریال</small></strong>
+                <strong>
+                  {formatPersonBalance(salesInvoiceTotal)}
+                  <small> {returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</small>
+                </strong>
               </div>
             </div>
 
             {salesInvoiceSaveError && (
               <p className="sales-invoice-form-error" role="alert">{salesInvoiceSaveError}</p>
             )}
-            <footer className="sales-invoice-actions" aria-label="عملیات فاکتور">
+            <footer
+              className="sales-invoice-actions"
+              aria-label={returnInvoiceMode
+                ? `عملیات فاکتور ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                : 'عملیات فاکتور'}
+            >
               <button type="button" onClick={() => openSalesInvoiceAdjustment('deduction')}>
                 <span aria-hidden="true">↓</span>
                 کسورات
@@ -9312,27 +9611,93 @@ function App() {
                 <span aria-hidden="true">＋</span>
                 افزودن کالا
               </button>
-              <button
-                type="button"
-                onClick={openSalesInvoiceItemPicker}
-              >
+              <button type="button" onClick={openSalesInvoiceBarcodePicker}>
                 <span aria-hidden="true">▦</span>
                 بارکدخوان
               </button>
               <button
                 className="finish"
                 type="button"
-                disabled={salesInvoiceSaving}
-                onClick={() => purchaseInvoiceMode ? savePurchaseInvoice() : saveSalesInvoice()}
+                disabled={!returnInvoiceMode && salesInvoiceSaving}
+                onClick={() => {
+                  if (returnInvoiceMode) {
+                    if (!selectedSalesInvoicePerson) {
+                      setSalesInvoicePartyError(returnPurchaseInvoiceMode
+                        ? 'برای بستن فاکتور، ابتدا تأمین‌کننده را انتخاب کنید.'
+                        : 'برای بستن فاکتور، ابتدا طرف‌حساب را انتخاب کنید.')
+                      return
+                    }
+                    setSalesInvoicePartyError('')
+                    showSalesInvoiceShareNotice(
+                      `ثبت نهایی فاکتور ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'} را پس از تکمیل مراحل بعد انجام می‌دهیم.`,
+                    )
+                  } else if (purchaseInvoiceMode) {
+                    savePurchaseInvoice()
+                  } else {
+                    saveSalesInvoice()
+                  }
+                }}
               >
                 <span aria-hidden="true">✓</span>
-                {salesInvoiceSaving
-                  ? 'در حال ذخیره…'
-                  : purchaseInvoiceMode
-                    ? 'ثبت فاکتور خرید'
-                    : salesInvoiceEditingInvoice ? 'ذخیره اصلاحات' : 'ثبت فاکتور'}
+                {returnInvoiceMode
+                  ? 'بستن فاکتور'
+                  : salesInvoiceSaving
+                    ? 'در حال ذخیره…'
+                    : purchaseInvoiceMode
+                      ? 'ثبت فاکتور خرید'
+                      : salesInvoiceEditingInvoice ? 'ذخیره اصلاحات' : 'ثبت فاکتور'}
               </button>
             </footer>
+
+            {returnInvoiceMode && salesInvoiceNoteDialogOpen && (
+              <div
+                className="sales-invoice-form-backdrop return-sales-note-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setSalesInvoiceNoteDialogOpen(false)
+                }}
+              >
+                <section
+                  className="return-sales-note-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="return-sales-note-title"
+                >
+                  <h2 id="return-sales-note-title">افزودن توضیحات به سند</h2>
+                  <label htmlFor="return-sales-note-input">
+                    توضیحات
+                    <span>({formatPersonCode(salesInvoiceNoteDraft.length)}/۲۵۵ کاراکتر)</span>
+                  </label>
+                  <textarea
+                    id="return-sales-note-input"
+                    autoFocus
+                    maxLength={255}
+                    rows={6}
+                    value={salesInvoiceNoteDraft}
+                    onChange={(event) => setSalesInvoiceNoteDraft(event.target.value)}
+                  />
+                  <footer>
+                    <button
+                      type="button"
+                      onClick={() => setSalesInvoiceNoteDialogOpen(false)}
+                    >
+                      لغو
+                      <span aria-hidden="true">×</span>
+                    </button>
+                    <button
+                      className="confirm"
+                      type="button"
+                      onClick={() => {
+                        setSalesInvoiceNote(salesInvoiceNoteDraft.trim())
+                        setSalesInvoiceNoteDialogOpen(false)
+                      }}
+                    >
+                      تأیید
+                      <span aria-hidden="true">✓</span>
+                    </button>
+                  </footer>
+                </section>
+              </div>
+            )}
 
             {salesInvoiceDatePickerOpen && (
               <div
@@ -9349,9 +9714,19 @@ function App() {
                 >
                   <header className="sales-invoice-date-heading">
                     <div>
-                      <span>{purchaseInvoiceMode ? 'تاریخ ثبت فاکتور خرید' : 'تاریخ ثبت فاکتور'}</span>
+                      <span>
+                        {returnSalesInvoiceMode
+                          ? 'تاریخ ثبت فاکتور برگشت از فروش'
+                          : returnPurchaseInvoiceMode
+                            ? 'تاریخ ثبت فاکتور برگشت به خرید'
+                            : purchaseInvoiceMode ? 'تاریخ ثبت فاکتور خرید' : 'تاریخ ثبت فاکتور'}
+                      </span>
                       <h2 id="sales-invoice-date-title">
-                        {purchaseInvoiceMode ? 'انتخاب تاریخ فاکتور خرید' : 'انتخاب تاریخ'}
+                        {returnSalesInvoiceMode
+                          ? 'انتخاب تاریخ فاکتور برگشت از فروش'
+                          : returnPurchaseInvoiceMode
+                            ? 'انتخاب تاریخ فاکتور برگشت به خرید'
+                            : purchaseInvoiceMode ? 'انتخاب تاریخ فاکتور خرید' : 'انتخاب تاریخ'}
                       </h2>
                     </div>
                     <button
@@ -9491,7 +9866,11 @@ function App() {
                   <header className="sales-invoice-date-heading">
                     <div>
                       <span>
-                        {purchaseInvoiceMode ? 'زمان ثبت فاکتور خرید' : 'زمان ثبت فاکتور'} · ۲۴ ساعته
+                        {returnSalesInvoiceMode
+                          ? 'زمان ثبت فاکتور برگشت از فروش'
+                          : returnPurchaseInvoiceMode
+                            ? 'زمان ثبت فاکتور برگشت به خرید'
+                            : purchaseInvoiceMode ? 'زمان ثبت فاکتور خرید' : 'زمان ثبت فاکتور'} · ۲۴ ساعته
                       </span>
                       <h2 id="sales-invoice-time-title">انتخاب ساعت</h2>
                     </div>
@@ -9646,7 +10025,9 @@ function App() {
                       <label className={salesInvoiceTimeField === 'hour' ? 'active' : ''}>
                         <input
                           ref={salesInvoiceHourInputRef}
-                          aria-label={purchaseInvoiceMode ? 'ساعت فاکتور خرید' : 'ساعت فاکتور'}
+                          aria-label={returnInvoiceMode
+                            ? `ساعت ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                            : purchaseInvoiceMode ? 'ساعت فاکتور خرید' : 'ساعت فاکتور'}
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9۰-۹٠-٩]*"
@@ -9664,7 +10045,9 @@ function App() {
                       <label className={salesInvoiceTimeField === 'minute' ? 'active' : ''}>
                         <input
                           ref={salesInvoiceMinuteInputRef}
-                          aria-label={purchaseInvoiceMode ? 'دقیقه فاکتور خرید' : 'دقیقه فاکتور'}
+                          aria-label={returnInvoiceMode
+                            ? `دقیقه ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
+                            : purchaseInvoiceMode ? 'دقیقه فاکتور خرید' : 'دقیقه فاکتور'}
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9۰-۹٠-٩]*"
@@ -9714,7 +10097,13 @@ function App() {
                 >
                   <header className="sales-invoice-date-heading">
                     <div>
-                      <span>{purchaseInvoiceMode ? 'تصویر سند خرید' : 'تصویر سند فروش'}</span>
+                      <span>
+                        {returnSalesInvoiceMode
+                          ? 'تصویر سند برگشت از فروش'
+                          : returnPurchaseInvoiceMode
+                            ? 'تصویر سند برگشت به خرید'
+                            : purchaseInvoiceMode ? 'تصویر سند خرید' : 'تصویر سند فروش'}
+                      </span>
                       <h2 id="sales-invoice-attachment-title">پیوست عکس</h2>
                     </div>
                     <button
@@ -9851,8 +10240,13 @@ function App() {
                     <div>
                       <span>انتخاب از فهرست اشخاص</span>
                       <h2 id="sales-invoice-person-picker-title">
-                        {purchaseInvoiceMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
+                        {returnPurchaseInvoiceMode
+                          ? 'تأمین‌کننده فاکتور برگشت به خرید'
+                          : purchaseInvoicePartyMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
                       </h2>
+                      <small className="sales-invoice-person-picker-count">
+                        {formatPersonBalance(filteredSalesInvoicePickerPeople.length)} مورد
+                      </small>
                     </div>
                     <button
                       type="button"
@@ -9863,12 +10257,79 @@ function App() {
                     </button>
                   </header>
                   <div className="sales-invoice-person-picker-content">
+                    <div className="sales-invoice-person-picker-filters">
+                      <div
+                        className="sales-invoice-person-picker-status"
+                        role="group"
+                        aria-label="فیلتر وضعیت حساب اشخاص"
+                      >
+                        {(['همه', 'بدهکاران', 'بستانکاران'] as const).map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            aria-pressed={salesInvoicePersonPickerStatus === status}
+                            className={salesInvoicePersonPickerStatus === status ? 'active' : ''}
+                            onClick={() => setSalesInvoicePersonPickerStatus(status)}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="sales-invoice-person-picker-group">
+                        <button
+                          className="sales-invoice-person-picker-add-group"
+                          type="button"
+                          aria-expanded={salesInvoicePersonPickerGroupFormOpen}
+                          onClick={() => {
+                            setSalesInvoicePersonPickerGroupFormOpen((isOpen) => !isOpen)
+                            setSalesInvoicePersonPickerGroupError('')
+                          }}
+                        >
+                          {salesInvoicePersonPickerGroupFormOpen ? 'انصراف' : 'گروه جدید'}
+                        </button>
+                        <label>
+                          <span className="sr-only">فیلتر گروه اشخاص</span>
+                          <select
+                            aria-label="فیلتر گروه اشخاص"
+                            value={salesInvoicePersonPickerGroup}
+                            onChange={(event) => setSalesInvoicePersonPickerGroup(event.target.value)}
+                          >
+                            <option value={allAccountReportGroups}>همه</option>
+                            {peopleGroupState.groups.map((group) => (
+                              <option key={group} value={group}>{group}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      {salesInvoicePersonPickerGroupFormOpen && (
+                        <form
+                          className="sales-invoice-person-picker-group-form"
+                          onSubmit={addSalesInvoicePickerGroup}
+                        >
+                          <input
+                            autoFocus
+                            aria-label="نام گروه جدید"
+                            maxLength={40}
+                            value={salesInvoicePersonPickerGroupName}
+                            onChange={(event) => {
+                              setSalesInvoicePersonPickerGroupName(event.target.value)
+                              setSalesInvoicePersonPickerGroupError('')
+                            }}
+                            placeholder="نام گروه جدید"
+                          />
+                          <button type="submit">افزودن گروه</button>
+                          {salesInvoicePersonPickerGroupError && (
+                            <small role="alert">{salesInvoicePersonPickerGroupError}</small>
+                          )}
+                        </form>
+                      )}
+                    </div>
                     <label className="sales-invoice-person-picker-search">
-                      <span>{purchaseInvoiceMode ? 'جست‌وجوی تأمین‌کننده' : 'جست‌وجوی شخص'}</span>
+                      <span>{purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کننده' : 'جست‌وجوی شخص'}</span>
                       <input
                         type="search"
                         autoFocus
-                        aria-label={purchaseInvoiceMode ? 'جست‌وجوی تأمین‌کنندگان' : 'جست‌وجوی اشخاص'}
+                        aria-label={purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کنندگان' : 'جست‌وجوی اشخاص'}
                         value={salesInvoicePersonPickerSearch}
                         onChange={(event) => setSalesInvoicePersonPickerSearch(event.target.value)}
                         placeholder="نام، شماره تماس یا کد"
@@ -9877,7 +10338,7 @@ function App() {
                     <div
                       className="sales-invoice-person-picker-list"
                       role="listbox"
-                      aria-label={purchaseInvoiceMode ? 'فهرست تأمین‌کنندگان' : 'فهرست اشخاص'}
+                      aria-label={purchaseInvoicePartyMode ? 'فهرست تأمین‌کنندگان' : 'فهرست اشخاص'}
                     >
                       {filteredSalesInvoicePickerPeople.map((person) => (
                         <button
@@ -9887,6 +10348,7 @@ function App() {
                           aria-selected={salesInvoicePerson === person.id}
                           onClick={() => {
                             setSalesInvoicePerson(person.id)
+                            setSalesInvoicePartyError('')
                             setSalesInvoicePersonSearch('')
                             setSalesInvoicePersonOptionsOpen(false)
                             setSalesInvoicePersonPickerOpen(false)
@@ -9905,7 +10367,7 @@ function App() {
                       ))}
                       {filteredSalesInvoicePickerPeople.length === 0 && (
                         <p>
-                          {purchaseInvoiceMode
+                          {purchaseInvoicePartyMode
                             ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
                             : 'شخصی با این مشخصات پیدا نشد.'}
                         </p>
@@ -9913,6 +10375,25 @@ function App() {
                     </div>
                   </div>
                   <footer>
+                    <button
+                      className="sales-invoice-person-picker-add-person"
+                      type="button"
+                      onClick={() => {
+                        const returnTab = activeTab
+                        const groupOverride = salesInvoicePersonPickerGroup === allAccountReportGroups
+                          ? undefined
+                          : salesInvoicePersonPickerGroup
+                        setSalesInvoicePersonPickerReturnTab(returnTab)
+                        setSalesInvoicePersonPickerOpen(false)
+                        setSalesInvoicePersonPickerGroupFormOpen(false)
+                        setSalesInvoicePersonPickerGroupError('')
+                        openPersonForm(purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص', groupOverride)
+                        setActiveTab('اشخاص')
+                      }}
+                    >
+                      <span aria-hidden="true">♙+</span>
+                      افزودن {purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص'}
+                    </button>
                     <button type="button" onClick={() => setSalesInvoicePersonPickerOpen(false)}>بستن</button>
                   </footer>
                 </section>
@@ -10067,7 +10548,14 @@ function App() {
                       </button>
                     </div>
                     <label className="sales-invoice-form-field">
-                      <span>{salesInvoiceAdjustmentMode === 'percent' ? 'درصد' : 'مبلغ'} <small>{salesInvoiceAdjustmentMode === 'percent' ? '٪' : 'ریال'}</small></span>
+                      <span>
+                        {salesInvoiceAdjustmentMode === 'percent' ? 'درصد' : 'مبلغ'}
+                        <small>
+                          {salesInvoiceAdjustmentMode === 'percent'
+                            ? '٪'
+                            : returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}
+                        </small>
+                      </span>
                       <input
                         inputMode="numeric"
                         value={formatPersonBalance(salesInvoiceAdjustmentValue)}
@@ -10084,7 +10572,7 @@ function App() {
                         {formatPersonBalance(salesInvoiceAdjustmentMode === 'percent'
                           ? Math.round(salesInvoiceSubtotal * salesInvoiceAdjustmentValue / 100)
                           : salesInvoiceAdjustmentValue)}
-                        <small> ریال</small>
+                        <small> {returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</small>
                       </strong>
                       {salesInvoiceAdjustmentMode === 'percent' && (
                         <small>بر اساس جمع کالاها و خدمات فاکتور</small>
@@ -10111,6 +10599,57 @@ function App() {
               </div>
             )}
 
+            {salesInvoiceBarcodeScannerOpen && (
+              <div
+                className="sales-invoice-barcode-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setSalesInvoiceBarcodeScannerOpen(false)
+                }}
+              >
+                <section
+                  className="sales-invoice-barcode-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="sales-invoice-barcode-title"
+                >
+                  <header>
+                    <div>
+                      <span>اسکن با دوربین</span>
+                      <h2 id="sales-invoice-barcode-title">بارکد کالا را مقابل دوربین بگیرید</h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بستن بارکدخوان"
+                      onClick={() => setSalesInvoiceBarcodeScannerOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </header>
+                  <div className="sales-invoice-barcode-preview">
+                    <video
+                      ref={salesInvoiceBarcodeVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      aria-label="پیش‌نمایش دوربین برای اسکن بارکد"
+                    />
+                    <span className="sales-invoice-barcode-target" aria-hidden="true" />
+                  </div>
+                  <p
+                    className={salesInvoiceBarcodeScannerError ? 'error' : ''}
+                    role={salesInvoiceBarcodeScannerError ? 'alert' : 'status'}
+                  >
+                    {salesInvoiceBarcodeScannerError || 'بارکد را داخل کادر قرار دهید؛ اسکن به‌صورت خودکار انجام می‌شود.'}
+                  </p>
+                  <footer>
+                    <button type="button" onClick={() => setSalesInvoiceBarcodeScannerOpen(false)}>
+                      بستن دوربین
+                    </button>
+                  </footer>
+                </section>
+              </div>
+            )}
+
             {salesInvoiceItemPickerOpen && (
               <div
                 className="sales-invoice-picker-backdrop"
@@ -10129,7 +10668,13 @@ function App() {
                 >
                   <header>
                     <div>
-                      <span>{purchaseInvoiceMode ? 'ثبت قلم فاکتور خرید' : 'ثبت قلم فاکتور فروش'}</span>
+                      <span>
+                        {returnSalesInvoiceMode
+                          ? 'ثبت قلم فاکتور برگشت از فروش'
+                          : returnPurchaseInvoiceMode
+                            ? 'ثبت قلم فاکتور برگشت به خرید'
+                            : purchaseInvoiceMode ? 'ثبت قلم فاکتور خرید' : 'ثبت قلم فاکتور فروش'}
+                      </span>
                       <h2 id="sales-invoice-picker-title">افزودن کالا</h2>
                     </div>
                     <button
@@ -10149,7 +10694,10 @@ function App() {
                         <span>نام کالا:</span>
                         <div className="sales-invoice-item-search-control">
                           <input
-                            aria-label="جست‌وجو و انتخاب کالا"
+                            autoFocus={salesInvoiceBarcodeMode}
+                            aria-label={salesInvoiceBarcodeMode
+                              ? 'اسکن یا جست‌وجوی بارکد کالا'
+                              : 'جست‌وجو و انتخاب کالا'}
                             value={salesInvoiceItemSearch}
                             onFocus={() => setSalesInvoiceItemOptionsOpen(Boolean(salesInvoiceItemSearch.trim()))}
                             onChange={(event) => {
@@ -10161,8 +10709,17 @@ function App() {
                               setSalesInvoiceDraftDiscountPercent(0)
                               setSalesInvoiceDraftDiscountAmount(0)
                               setSalesInvoiceItemOptionsOpen(Boolean(event.target.value.trim()))
+                              if (salesInvoiceBarcodeMode && event.target.value.trim()) {
+                                const scannedValue = event.target.value.trim()
+                                const matchedItem = inventoryItems.find((item) => (
+                                  item.barcode?.trim() === scannedValue || item.code?.trim() === scannedValue
+                                ))
+                                if (matchedItem) selectSalesInvoiceItem(matchedItem)
+                              }
                             }}
-                            placeholder="جست‌وجو..."
+                            placeholder={salesInvoiceBarcodeMode
+                              ? 'بارکد را وارد یا با بارکدخوان اسکن کنید'
+                              : 'جست‌وجو...'}
                           />
                           <button
                             type="button"
@@ -10202,7 +10759,8 @@ function App() {
                                 <small>{item.kind} · {item.unit} · موجودی {formatPersonBalance(item.stock)}</small>
                               </span>
                               <b>
-                                {formatPersonBalance(item.salePrice)} <small>ریال</small>
+                                {formatPersonBalance(purchaseInvoicePartyMode ? item.purchasePrice : item.salePrice)}
+                                <small> {returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</small>
                                 {salesInvoiceSettings.showPurchasePrice && (
                                   <small className="sales-invoice-purchase-price">
                                     خرید {formatPersonBalance(item.purchasePrice)}
@@ -10289,7 +10847,7 @@ function App() {
                             disabled={!salesInvoiceDraftItem}
                           />
                           <small>قیمت هر واحد</small>
-                          <em>ریال</em>
+                          <em>{returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</em>
                         </div>
                       </label>
                       {salesInvoiceSettings.enableItemDiscount && (
@@ -10324,7 +10882,7 @@ function App() {
                                 disabled={!salesInvoiceDraftItem}
                               />
                               <em>مبلغ</em>
-                              <em>ریال</em>
+                              <em>{returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</em>
                             </div>
                           </label>
                         </div>
@@ -10343,7 +10901,7 @@ function App() {
                             ) : 0),
                           ))}
                         </strong>
-                        <small>ریال</small>
+                        <small>{returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</small>
                       </div>
                     </div>
 
@@ -12899,7 +13457,7 @@ function App() {
                 type="button"
                 aria-label="شخص جدید"
                 title="شخص جدید"
-                onClick={openPersonForm}
+                onClick={() => openPersonForm()}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
@@ -12911,7 +13469,7 @@ function App() {
               <div
                 className="person-modal-backdrop"
                 onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setPersonFormOpen(false)
+                  if (event.target === event.currentTarget) closePersonForm()
                 }}
               >
                 <section
@@ -12924,14 +13482,16 @@ function App() {
                     <span className="person-modal-icon"><Icon name="people" /></span>
                     <div>
                       <span className="person-modal-eyebrow">دفتر اشخاص</span>
-                      <h2 id="person-form-title">معرفی شخص جدید</h2>
+                      <h2 id="person-form-title">
+                        معرفی {personFormRole === 'تأمین‌کننده' ? 'تأمین‌کننده' : 'شخص'} جدید
+                      </h2>
                       <p>اطلاعات تماس و وضعیت حساب را ثبت کن.</p>
                     </div>
                     <button
                       className="person-modal-close"
                       type="button"
                       aria-label="بستن فرم"
-                      onClick={() => setPersonFormOpen(false)}
+                      onClick={closePersonForm}
                     >
                       ×
                     </button>
@@ -13136,7 +13696,7 @@ function App() {
                       <button
                         className="person-form-cancel"
                         type="button"
-                        onClick={() => setPersonFormOpen(false)}
+                        onClick={closePersonForm}
                       >
                         انصراف
                       </button>
@@ -13441,6 +14001,10 @@ function App() {
                   ? openSalesInvoice()
                   : item.label === 'فاکتور خرید'
                     ? openPurchaseInvoice()
+                    : item.label === 'برگشت از فروش'
+                      ? openReturnSalesInvoice()
+                      : item.label === 'برگشت به خرید'
+                        ? openReturnPurchaseInvoice()
                     : isMoneyDocumentKind(item.label)
                       ? openMoneyDocumentForm(item.label)
                     : showComingSoon(item.label)}
