@@ -10710,6 +10710,20 @@ button:focus-visible {
   border-radius: 10px;
 }
 
+.money-document-due-date {
+  justify-content: flex-start;
+  color: var(--app-color-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+  cursor: pointer;
+}
+
+.money-document-due-date:hover {
+  border-color: var(--app-color-bright);
+}
+
 .sales-invoice-receipt-input-wrap:focus-within {
   border-color: var(--app-color-bright);
   box-shadow: 0 0 0 3px rgba(var(--app-color-accent-rgb), .12);

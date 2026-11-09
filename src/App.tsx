@@ -788,6 +788,7 @@ const SALES_INVOICE_SETTINGS_STORAGE_KEY = 'trazino-sales-invoice-settings-v1'
 const SALES_INVOICES_STORAGE_KEY = 'trazino-sales-invoices-v1'
 const PURCHASE_INVOICES_STORAGE_KEY = 'trazino-purchase-invoices-v1'
 const MONEY_DOCUMENTS_STORAGE_KEY = 'trazino-money-documents-v1'
+const RECEIVED_CHECKS_STORAGE_KEY = 'trazino-received-checks-v1'
 const defaultSalesInvoiceSettings: SalesInvoiceSettings = {
   prefixCategoryName: false,
   enableItemDiscount: true,
@@ -809,6 +810,7 @@ type StoredPurchaseInvoices = {
 }
 
 type MoneyDocumentKind = 'دریافت' | 'پرداخت' | 'هزینه' | 'درآمد'
+type MoneyDocumentFormKind = MoneyDocumentKind | 'دریافت چک'
 type MoneyDocument = {
   id: string
   number: string
@@ -828,6 +830,31 @@ type MoneyDocument = {
 
 type StoredMoneyDocuments = {
   documents: MoneyDocument[]
+  error: string
+}
+
+type ReceivedCheck = {
+  id: string
+  number: string
+  personId: string
+  personName: string
+  sayadiId: string
+  leafNumber: string
+  serial: string
+  nationalId: string
+  dueDate: string
+  amount: number
+  bankName: string
+  date: string
+  calendar: CalendarSystem
+  time: string
+  note: string
+  attachment?: { name: string; type: string; dataUrl: string }
+  createdAt: string
+}
+
+type StoredReceivedChecks = {
+  checks: ReceivedCheck[]
   error: string
 }
 
@@ -1015,6 +1042,48 @@ function readStoredMoneyDocuments(storeId: number | null = null): StoredMoneyDoc
     return {
       documents: [],
       error: 'سندهای دریافت و پرداخت ذخیره‌شده قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
+    }
+  }
+}
+
+function isReceivedCheck(value: unknown): value is ReceivedCheck {
+  if (!value || typeof value !== 'object') return false
+  const check = value as Record<string, unknown>
+  return typeof check.id === 'string'
+    && typeof check.number === 'string'
+    && typeof check.personId === 'string'
+    && typeof check.personName === 'string'
+    && typeof check.sayadiId === 'string'
+    && typeof check.leafNumber === 'string'
+    && typeof check.serial === 'string'
+    && typeof check.nationalId === 'string'
+    && typeof check.dueDate === 'string'
+    && typeof check.amount === 'number'
+    && Number.isSafeInteger(check.amount)
+    && check.amount > 0
+    && typeof check.bankName === 'string'
+    && typeof check.date === 'string'
+    && (check.calendar === 'persian' || check.calendar === 'islamic-umalqura' || check.calendar === 'gregory')
+    && typeof check.time === 'string'
+    && typeof check.note === 'string'
+    && (check.attachment === undefined || isImageDataAttachment(check.attachment))
+    && typeof check.createdAt === 'string'
+    && Number.isFinite(Date.parse(check.createdAt))
+}
+
+function readStoredReceivedChecks(storeId: number | null = null): StoredReceivedChecks {
+  try {
+    const raw = readStoreData(RECEIVED_CHECKS_STORAGE_KEY, storeId)
+    if (!raw) return { checks: [], error: '' }
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.every(isReceivedCheck)) {
+      throw new Error('Invalid received checks')
+    }
+    return { checks: parsed, error: '' }
+  } catch {
+    return {
+      checks: [],
+      error: 'چک‌های دریافتی ذخیره‌شده قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
     }
   }
 }
@@ -1411,6 +1480,7 @@ const STORE_DATA_KEYS = [
   SALES_INVOICES_STORAGE_KEY,
   PURCHASE_INVOICES_STORAGE_KEY,
   MONEY_DOCUMENTS_STORAGE_KEY,
+  RECEIVED_CHECKS_STORAGE_KEY,
   INVENTORY_UNITS_STORAGE_KEY,
   INVENTORY_OPTIONS_STORAGE_KEY,
   INVENTORY_ITEMS_STORAGE_KEY,
@@ -1462,6 +1532,7 @@ function isAccountingBackup(value: unknown): value is AccountingBackup {
         || key === SALES_INVOICES_STORAGE_KEY
         || key === PURCHASE_INVOICES_STORAGE_KEY
         || key === MONEY_DOCUMENTS_STORAGE_KEY
+        || key === RECEIVED_CHECKS_STORAGE_KEY
       ) && raw === undefined) continue
       if (raw !== null && typeof raw !== 'string') return false
       if (typeof raw === 'string') {
@@ -1811,12 +1882,21 @@ function App() {
   const [storedMoneyDocuments, setStoredMoneyDocuments] = useState<StoredMoneyDocuments>(
     () => readStoredMoneyDocuments(activeStoreId),
   )
-  const [moneyDocumentKind, setMoneyDocumentKind] = useState<MoneyDocumentKind | null>(null)
+  const [storedReceivedChecks, setStoredReceivedChecks] = useState<StoredReceivedChecks>(
+    () => readStoredReceivedChecks(activeStoreId),
+  )
+  const [moneyDocumentKind, setMoneyDocumentKind] = useState<MoneyDocumentFormKind | null>(null)
   const [moneyDocumentFields, setMoneyDocumentFields] = useState({
     personId: '',
     accountId: '',
     amount: '',
     description: '',
+    sayadiId: '',
+    leafNumber: '',
+    serial: '',
+    nationalId: '',
+    dueDate: getIranDateValue(new Date()),
+    bankName: '',
     date: getIranDateValue(new Date()),
     time: (() => {
       const { hours, minutes } = getIranClockParts(new Date())
@@ -1829,6 +1909,7 @@ function App() {
   const [moneyDocumentSaving, setMoneyDocumentSaving] = useState(false)
   const [moneyDocumentNoteOpen, setMoneyDocumentNoteOpen] = useState(false)
   const [moneyDocumentDatePickerOpen, setMoneyDocumentDatePickerOpen] = useState(false)
+  const [moneyDocumentDateTarget, setMoneyDocumentDateTarget] = useState<'document' | 'dueDate'>('document')
   const [moneyDocumentDraftDate, setMoneyDocumentDraftDate] = useState(() => new Date())
   const [moneyDocumentCalendar, setMoneyDocumentCalendar] = useState<CalendarSystem>('persian')
   const [moneyDocumentDraftCalendar, setMoneyDocumentDraftCalendar] = useState<CalendarSystem>('persian')
@@ -2871,6 +2952,7 @@ function App() {
     setStoredSalesInvoices(readStoredSalesInvoices(storeId))
     setStoredPurchaseInvoices(readStoredPurchaseInvoices(storeId))
     setStoredMoneyDocuments(readStoredMoneyDocuments(storeId))
+    setStoredReceivedChecks(readStoredReceivedChecks(storeId))
     setStoredInventoryUnits(readStoredInventoryUnits(storeId))
     setInventoryOptions(readStoredInventoryOptions(storeId))
     setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
@@ -3234,18 +3316,29 @@ function App() {
     window.setTimeout(() => setNotice(''), 2600)
   }
 
-  const openMoneyDocumentForm = (kind: MoneyDocumentKind) => {
+  const openMoneyDocumentForm = (kind: MoneyDocumentFormKind) => {
     const now = new Date()
     const { hours, minutes } = getIranClockParts(now)
     const defaultPerson = storedPeopleState.people.find((person) => (
-      kind === 'دریافت' ? person.role !== 'تأمین‌کننده' : person.role === 'تأمین‌کننده'
+      kind === 'دریافت' || kind === 'دریافت چک'
+        ? person.role !== 'تأمین‌کننده'
+        : person.role === 'تأمین‌کننده'
     )) ?? storedPeopleState.people[0]
     setMoneyDocumentKind(kind)
+    setMoneyDocumentCalendar('persian')
     setMoneyDocumentFields({
-      personId: kind === 'دریافت' || kind === 'پرداخت' ? defaultPerson?.id ?? '' : '',
+      personId: kind === 'دریافت' || kind === 'پرداخت' || kind === 'دریافت چک'
+        ? defaultPerson?.id ?? ''
+        : '',
       accountId: storedAccounts.accounts[0]?.id ?? '',
       amount: '',
       description: '',
+      sayadiId: '',
+      leafNumber: '',
+      serial: '',
+      nationalId: '',
+      dueDate: getIranDateValue(now),
+      bankName: '',
       date: getIranDateValue(now),
       time: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
       note: '',
@@ -3258,9 +3351,11 @@ function App() {
     setMoneyDocumentAttachmentPickerOpen(false)
   }
 
-  const openMoneyDocumentDatePicker = () => {
-    const selectedDate = new Date(`${moneyDocumentFields.date}T12:00:00Z`)
+  const openMoneyDocumentDatePicker = (target: 'document' | 'dueDate' = 'document') => {
+    const dateValue = target === 'dueDate' ? moneyDocumentFields.dueDate : moneyDocumentFields.date
+    const selectedDate = new Date(`${dateValue}T12:00:00Z`)
     const validDate = Number.isNaN(selectedDate.getTime()) ? normalizeUtcDate(new Date()) : selectedDate
+    setMoneyDocumentDateTarget(target)
     setMoneyDocumentToday(getIranDateValue(new Date()))
     setMoneyDocumentDraftDate(validDate)
     setMoneyDocumentDraftCalendar(moneyDocumentCalendar)
@@ -3269,11 +3364,12 @@ function App() {
   }
 
   const saveMoneyDocumentDate = () => {
+    const selectedDate = normalizeUtcDate(moneyDocumentDraftDate).toISOString().slice(0, 10)
     setMoneyDocumentFields((fields) => ({
       ...fields,
-      date: normalizeUtcDate(moneyDocumentDraftDate).toISOString().slice(0, 10),
+      [moneyDocumentDateTarget === 'dueDate' ? 'dueDate' : 'date']: selectedDate,
     }))
-    setMoneyDocumentCalendar(moneyDocumentDraftCalendar)
+    if (moneyDocumentDateTarget === 'document') setMoneyDocumentCalendar(moneyDocumentDraftCalendar)
     setMoneyDocumentDatePickerOpen(false)
   }
 
@@ -3355,6 +3451,70 @@ function App() {
 
     try {
       if (!activeStoreId) throw new Error('برای ثبت سند ابتدا یک فروشگاه را انتخاب کنید.')
+      if (moneyDocumentKind === 'دریافت چک') {
+        if (storedReceivedChecks.error) throw new Error(storedReceivedChecks.error)
+        if (storedPeopleState.error) throw new Error(storedPeopleState.error)
+        const person = storedPeopleState.people.find((item) => item.id === moneyDocumentFields.personId)
+        if (!person) throw new Error('طرف حساب را انتخاب کنید.')
+
+        const sayadiId = normalizeAccountDigits(moneyDocumentFields.sayadiId)
+        if (sayadiId.length !== 16) throw new Error('شناسهٔ صیادی باید ۱۶ رقم باشد.')
+        if (!moneyDocumentFields.leafNumber.trim()) throw new Error('شمارهٔ برگ چک را وارد کنید.')
+        if (!moneyDocumentFields.serial.trim()) throw new Error('سریال چک را وارد کنید.')
+        if (normalizeAccountDigits(moneyDocumentFields.nationalId).length !== 10) {
+          throw new Error('کد ملی باید ۱۰ رقم باشد.')
+        }
+        const dueDate = new Date(`${moneyDocumentFields.dueDate}T12:00:00Z`)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(moneyDocumentFields.dueDate)
+          || Number.isNaN(dueDate.getTime())
+          || dueDate.toISOString().slice(0, 10) !== moneyDocumentFields.dueDate) {
+          throw new Error('تاریخ سررسید چک را به‌درستی وارد کنید.')
+        }
+
+        const amount = parsePersonBalance(moneyDocumentFields.amount)
+        if (amount === null || amount <= 0) throw new Error('مبلغ باید عددی صحیح و بیشتر از صفر باشد.')
+        if (!moneyDocumentFields.bankName.trim()) throw new Error('نام بانک را وارد کنید.')
+        const date = new Date(`${moneyDocumentFields.date}T12:00:00Z`)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(moneyDocumentFields.date)
+          || Number.isNaN(date.getTime())
+          || date.toISOString().slice(0, 10) !== moneyDocumentFields.date) {
+          throw new Error('تاریخ سند را به‌درستی وارد کنید.')
+        }
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(moneyDocumentFields.time)) {
+          throw new Error('ساعت سند را به‌درستی وارد کنید.')
+        }
+
+        const existingChecks = readStoredReceivedChecks(activeStoreId)
+        if (existingChecks.error) throw new Error(existingChecks.error)
+        const check: ReceivedCheck = {
+          id: `received-check-${activeStoreId}-${Date.now()}`,
+          number: formatPersonCode(existingChecks.checks.length + 1),
+          personId: person.id,
+          personName: person.name,
+          sayadiId,
+          leafNumber: moneyDocumentFields.leafNumber.trim(),
+          serial: moneyDocumentFields.serial.trim(),
+          nationalId: normalizeAccountDigits(moneyDocumentFields.nationalId),
+          dueDate: moneyDocumentFields.dueDate,
+          amount,
+          bankName: moneyDocumentFields.bankName.trim(),
+          date: moneyDocumentFields.date,
+          calendar: moneyDocumentCalendar,
+          time: moneyDocumentFields.time,
+          note: moneyDocumentFields.note.trim(),
+          ...(moneyDocumentFields.attachment ? { attachment: moneyDocumentFields.attachment } : {}),
+          createdAt: new Date().toISOString(),
+        }
+        const checks = [...existingChecks.checks, check]
+        const storageKey = getActiveStoreDataStorageKey(RECEIVED_CHECKS_STORAGE_KEY, activeStoreId)
+        localStorage.setItem(storageKey, JSON.stringify(checks))
+        setStoredReceivedChecks({ checks, error: '' })
+        setMoneyDocumentKind(null)
+        setNotice(`چک دریافتی از ${person.name} ثبت شد.`)
+        window.setTimeout(() => setNotice(''), 3000)
+        return
+      }
+
       if (storedMoneyDocuments.error) throw new Error(storedMoneyDocuments.error)
       if (storedAccounts.error) throw new Error(storedAccounts.error)
       const needsPerson = moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت'
@@ -13945,7 +14105,7 @@ function App() {
                 className={[
                   'entry-card',
                   item.label === 'فاکتور خرید' && 'purchase-invoice-card',
-                  item.label === 'دریافت' && 'entry-card-receive',
+                  (item.label === 'دریافت' || item.label === 'دریافت چک') && 'entry-card-receive',
                   item.label === 'پرداخت' && 'entry-card-payment',
                   item.label === 'هزینه' && 'entry-card-expense',
                   item.label === 'درآمد' && 'entry-card-income',
@@ -13960,7 +14120,9 @@ function App() {
                       ? openReturnSalesInvoice()
                       : item.label === 'برگشت به خرید'
                         ? openReturnPurchaseInvoice()
-                    : isMoneyDocumentKind(item.label)
+                      : item.label === 'دریافت چک'
+                        ? openMoneyDocumentForm('دریافت چک')
+                      : isMoneyDocumentKind(item.label)
                       ? openMoneyDocumentForm(item.label)
                     : showComingSoon(item.label)}
               >
@@ -14039,7 +14201,9 @@ function App() {
                 {moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت' ? ' وجه' : ''}
               </h2>
               <p>سند شمارهٔ {formatPersonCode(
-                storedMoneyDocuments.documents.filter((item) => item.kind === moneyDocumentKind).length + 1,
+                moneyDocumentKind === 'دریافت چک'
+                  ? storedReceivedChecks.checks.length + 1
+                  : storedMoneyDocuments.documents.filter((item) => item.kind === moneyDocumentKind).length + 1,
               )}</p>
             </header>
             <form onSubmit={saveMoneyDocument}>
@@ -14084,13 +14248,15 @@ function App() {
                 <div className="sales-invoice-receipt-tool-group secondary">
                   <button
                     type="button"
-                    aria-label={moneyDocumentNoteOpen ? 'بستن توضیحات' : 'افزودن توضیحات'}
+                    aria-label={moneyDocumentKind === 'دریافت چک'
+                      ? moneyDocumentNoteOpen ? 'بستن یادداشت' : 'افزودن یادداشت'
+                      : moneyDocumentNoteOpen ? 'بستن توضیحات' : 'افزودن توضیحات'}
                     aria-pressed={moneyDocumentNoteOpen}
                     className={moneyDocumentNoteOpen ? 'active' : ''}
                     onClick={() => setMoneyDocumentNoteOpen((open) => !open)}
                   >
                     <span aria-hidden="true">▤</span>
-                    <span>توضیحات</span>
+                    <span>{moneyDocumentKind === 'دریافت چک' ? 'یادداشت' : 'توضیحات'}</span>
                   </button>
                   <button
                     type="button"
@@ -14122,13 +14288,16 @@ function App() {
                 </div>
               </div>
               <div className="sales-invoice-receipt-fields">
-                {(moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت') && (
+                {(moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت'
+                  || moneyDocumentKind === 'دریافت چک') && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon" aria-hidden="true">♙</span>
-                    <span className="sales-invoice-receipt-field-label">شخص:</span>
+                    <span className="sales-invoice-receipt-field-label">
+                      {moneyDocumentKind === 'دریافت چک' ? 'طرف حساب:' : 'شخص:'}
+                    </span>
                     <span className="sales-invoice-receipt-account-wrap">
                       <select
-                        aria-label="شخص سند"
+                        aria-label={moneyDocumentKind === 'دریافت چک' ? 'طرف حساب چک' : 'شخص سند'}
                         value={moneyDocumentFields.personId}
                         onChange={(event) => setMoneyDocumentFields((fields) => ({
                           ...fields,
@@ -14160,6 +14329,98 @@ function App() {
                       )}
                     </span>
                   </label>
+                )}
+                {moneyDocumentKind === 'دریافت چک' && (
+                  <>
+                    <label className="sales-invoice-receipt-field">
+                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">⌁</span>
+                      <span className="sales-invoice-receipt-field-label">شناسه صیادی:</span>
+                      <span className="sales-invoice-receipt-input-wrap">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          aria-label="شناسه صیادی چک"
+                          value={moneyDocumentFields.sayadiId}
+                          onChange={(event) => setMoneyDocumentFields((fields) => ({
+                            ...fields,
+                            sayadiId: normalizeAccountDigits(event.target.value).slice(0, 16),
+                          }))}
+                          maxLength={16}
+                          required
+                        />
+                      </span>
+                    </label>
+                    <label className="sales-invoice-receipt-field">
+                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">▤</span>
+                      <span className="sales-invoice-receipt-field-label">شماره برگ:</span>
+                      <span className="sales-invoice-receipt-input-wrap">
+                        <input
+                          type="text"
+                          aria-label="شماره برگ چک"
+                          value={moneyDocumentFields.leafNumber}
+                          onChange={(event) => setMoneyDocumentFields((fields) => ({
+                            ...fields,
+                            leafNumber: event.target.value,
+                          }))}
+                          maxLength={30}
+                          required
+                        />
+                      </span>
+                    </label>
+                    <label className="sales-invoice-receipt-field">
+                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">۶</span>
+                      <span className="sales-invoice-receipt-field-label">سریال:</span>
+                      <span className="sales-invoice-receipt-input-wrap">
+                        <input
+                          type="text"
+                          aria-label="سریال چک"
+                          value={moneyDocumentFields.serial}
+                          onChange={(event) => setMoneyDocumentFields((fields) => ({
+                            ...fields,
+                            serial: event.target.value,
+                          }))}
+                          maxLength={30}
+                          required
+                        />
+                      </span>
+                    </label>
+                    <label className="sales-invoice-receipt-field">
+                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">♙</span>
+                      <span className="sales-invoice-receipt-field-label">کد ملی:</span>
+                      <span className="sales-invoice-receipt-input-wrap">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          aria-label="کد ملی صادرکننده چک"
+                          value={moneyDocumentFields.nationalId}
+                          onChange={(event) => setMoneyDocumentFields((fields) => ({
+                            ...fields,
+                            nationalId: normalizeAccountDigits(event.target.value).slice(0, 10),
+                          }))}
+                          maxLength={10}
+                          required
+                        />
+                      </span>
+                    </label>
+                    <label className="sales-invoice-receipt-field">
+                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">▦</span>
+                      <span className="sales-invoice-receipt-field-label">تاریخ سررسید:</span>
+                      <button
+                        className="sales-invoice-receipt-input-wrap money-document-due-date"
+                        type="button"
+                        aria-label="انتخاب تاریخ سررسید چک"
+                        aria-haspopup="dialog"
+                        onClick={() => openMoneyDocumentDatePicker('dueDate')}
+                      >
+                        {formatCalendarDate(
+                          new Date(`${moneyDocumentFields.dueDate}T12:00:00Z`),
+                          moneyDocumentCalendar,
+                        )}
+                      </button>
+                    </label>
+                  </>
                 )}
                 {(moneyDocumentKind === 'هزینه' || moneyDocumentKind === 'درآمد') && (
                   <label className="sales-invoice-receipt-field">
@@ -14200,7 +14461,26 @@ function App() {
                     <small>ریال</small>
                   </span>
                 </label>
-                <label className="sales-invoice-receipt-field">
+                {moneyDocumentKind === 'دریافت چک' && (
+                  <label className="sales-invoice-receipt-field">
+                    <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
+                    <span className="sales-invoice-receipt-field-label">بانک:</span>
+                    <span className="sales-invoice-receipt-input-wrap">
+                      <input
+                        type="text"
+                        aria-label="بانک صادرکننده چک"
+                        value={moneyDocumentFields.bankName}
+                        onChange={(event) => setMoneyDocumentFields((fields) => ({
+                          ...fields,
+                          bankName: event.target.value,
+                        }))}
+                        maxLength={80}
+                        required
+                      />
+                    </span>
+                  </label>
+                )}
+                {moneyDocumentKind !== 'دریافت چک' && <label className="sales-invoice-receipt-field">
                   <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
                   <span className="sales-invoice-receipt-field-label">
                     {moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'درآمد' ? 'واریز به:' : 'برداشت از:'}
@@ -14228,10 +14508,12 @@ function App() {
                       </small>
                     )}
                   </span>
-                </label>
+                </label>}
                 {moneyDocumentNoteOpen && (
                   <label className="sales-invoice-receipt-note">
-                    <span>توضیحات {moneyDocumentKind}</span>
+                    <span>{moneyDocumentKind === 'دریافت چک'
+                      ? 'یادداشت دریافت چک'
+                      : `توضیحات ${moneyDocumentKind}`}</span>
                     <textarea
                       maxLength={500}
                       value={moneyDocumentFields.note}
@@ -14239,7 +14521,9 @@ function App() {
                         ...fields,
                         note: event.target.value,
                       }))}
-                      placeholder={`توضیحات ${moneyDocumentKind}...`}
+                      placeholder={moneyDocumentKind === 'دریافت چک'
+                        ? 'یادداشت دریافت چک...'
+                        : `توضیحات ${moneyDocumentKind}...`}
                       rows={2}
                     />
                   </label>
@@ -14301,7 +14585,9 @@ function App() {
           >
             <header className="sales-invoice-date-heading">
               <div>
-                <span>تاریخ ثبت {moneyDocumentKind}</span>
+                <span>{moneyDocumentDateTarget === 'dueDate'
+                  ? 'تاریخ سررسید چک'
+                  : `تاریخ ثبت ${moneyDocumentKind}`}</span>
                 <h2 id="money-document-date-title">انتخاب تاریخ</h2>
               </div>
               <button
