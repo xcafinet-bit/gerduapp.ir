@@ -17546,6 +17546,114 @@ button:focus-visible {
   --app-color-surface-deep: #f4e3e9;
 }
 
+.app-frame[data-color-theme='material-blue'] {
+  --app-color-accent: #1a73e8;
+  --app-color-accent-rgb: 26, 115, 232;
+  --app-color-bright: #4285f4;
+  --app-color-deep: #1558b0;
+  --app-color-light: #a8c7fa;
+  --app-color-soft: #e8f0fe;
+  --app-color-tint: #f1f5fe;
+  --app-color-border: #d5e2fb;
+  --app-color-navy: #173b63;
+  --app-color-mid: #1558b0;
+  --app-color-ink: #24466f;
+  --app-color-page: #eaf1fc;
+  --app-color-surface: #f7faff;
+  --app-color-surface-raised: #edf4ff;
+  --app-color-surface-deep: #e0ebfc;
+}
+
+.app-frame[data-color-theme='material-indigo'] {
+  --app-color-accent: #3f51b5;
+  --app-color-accent-rgb: 63, 81, 181;
+  --app-color-bright: #5c6bc0;
+  --app-color-deep: #303f9f;
+  --app-color-light: #b3baf0;
+  --app-color-soft: #e8eaf6;
+  --app-color-tint: #f1f2fa;
+  --app-color-border: #d9dcf1;
+  --app-color-navy: #292f58;
+  --app-color-mid: #303f9f;
+  --app-color-ink: #3d4678;
+  --app-color-page: #eef0fa;
+  --app-color-surface: #f9f9fe;
+  --app-color-surface-raised: #eff0fa;
+  --app-color-surface-deep: #e5e7f6;
+}
+
+.app-frame[data-color-theme='material-cyan'] {
+  --app-color-accent: #0097a7;
+  --app-color-accent-rgb: 0, 151, 167;
+  --app-color-bright: #26a69a;
+  --app-color-deep: #006978;
+  --app-color-light: #80deea;
+  --app-color-soft: #e0f7fa;
+  --app-color-tint: #ecfbfc;
+  --app-color-border: #c5edf0;
+  --app-color-navy: #16454b;
+  --app-color-mid: #006978;
+  --app-color-ink: #28545a;
+  --app-color-page: #eaf7f8;
+  --app-color-surface: #f7fcfc;
+  --app-color-surface-raised: #edf8f9;
+  --app-color-surface-deep: #e0f1f3;
+}
+
+.app-frame[data-color-theme='apple-graphite'] {
+  --app-color-accent: #636366;
+  --app-color-accent-rgb: 99, 99, 102;
+  --app-color-bright: #8e8e93;
+  --app-color-deep: #48484a;
+  --app-color-light: #d1d1d6;
+  --app-color-soft: #ebebf0;
+  --app-color-tint: #f5f5f7;
+  --app-color-border: #dedee3;
+  --app-color-navy: #343438;
+  --app-color-mid: #48484a;
+  --app-color-ink: #45454a;
+  --app-color-page: #f0f0f3;
+  --app-color-surface: #fcfcfd;
+  --app-color-surface-raised: #f4f4f6;
+  --app-color-surface-deep: #e8e8eb;
+}
+
+.app-frame[data-color-theme='apple-green'] {
+  --app-color-accent: #34c759;
+  --app-color-accent-rgb: 52, 199, 89;
+  --app-color-bright: #55d675;
+  --app-color-deep: #208a3e;
+  --app-color-light: #a8e8b8;
+  --app-color-soft: #e4f8e9;
+  --app-color-tint: #f0fbf2;
+  --app-color-border: #ccefd4;
+  --app-color-navy: #1f492b;
+  --app-color-mid: #208a3e;
+  --app-color-ink: #315a3a;
+  --app-color-page: #eaf7ed;
+  --app-color-surface: #f7fcf8;
+  --app-color-surface-raised: #eff9f1;
+  --app-color-surface-deep: #e0f1e4;
+}
+
+.app-frame[data-color-theme='coral'] {
+  --app-color-accent: #e76f51;
+  --app-color-accent-rgb: 231, 111, 81;
+  --app-color-bright: #f08a70;
+  --app-color-deep: #b94a36;
+  --app-color-light: #f6b6a5;
+  --app-color-soft: #fde9e3;
+  --app-color-tint: #fff5f1;
+  --app-color-border: #f4d5cc;
+  --app-color-navy: #573329;
+  --app-color-mid: #b94a36;
+  --app-color-ink: #75483d;
+  --app-color-page: #fbefeb;
+  --app-color-surface: #fff9f7;
+  --app-color-surface-raised: #fff1ed;
+  --app-color-surface-deep: #f8e6e0;
+}
+
 .app-frame[data-theme='dark'] {
   --app-color-page: #0c171d;
   --app-color-surface: #15242b;
@@ -17622,6 +17730,84 @@ button:focus-visible {
   --app-color-surface-deep: #21131a;
   --app-color-navy: #422632;
   --app-color-mid: #70384a;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='material-blue'] {
+  --app-color-accent: #8ab4f8;
+  --app-color-accent-rgb: 138, 180, 248;
+  --app-color-bright: #a8c7fa;
+  --app-color-light: #c6dafc;
+  --app-color-page: #101923;
+  --app-color-surface: #172635;
+  --app-color-surface-raised: #1e3042;
+  --app-color-surface-deep: #121f2b;
+  --app-color-navy: #1c3e67;
+  --app-color-mid: #24599a;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='material-indigo'] {
+  --app-color-accent: #9fa8da;
+  --app-color-accent-rgb: 159, 168, 218;
+  --app-color-bright: #b3bbe6;
+  --app-color-light: #cbd0ee;
+  --app-color-page: #121522;
+  --app-color-surface: #1c2032;
+  --app-color-surface-raised: #252a40;
+  --app-color-surface-deep: #171a29;
+  --app-color-navy: #292f58;
+  --app-color-mid: #39478a;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='material-cyan'] {
+  --app-color-accent: #80deea;
+  --app-color-accent-rgb: 128, 222, 234;
+  --app-color-bright: #9ce8ed;
+  --app-color-light: #b7eef1;
+  --app-color-page: #0e1b1e;
+  --app-color-surface: #15282c;
+  --app-color-surface-raised: #1d3338;
+  --app-color-surface-deep: #112125;
+  --app-color-navy: #16454b;
+  --app-color-mid: #096b76;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='apple-graphite'] {
+  --app-color-accent: #c7c7cc;
+  --app-color-accent-rgb: 199, 199, 204;
+  --app-color-bright: #d9d9de;
+  --app-color-light: #e8e8eb;
+  --app-color-page: #171719;
+  --app-color-surface: #232326;
+  --app-color-surface-raised: #2c2c30;
+  --app-color-surface-deep: #1c1c1f;
+  --app-color-navy: #343438;
+  --app-color-mid: #48484a;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='apple-green'] {
+  --app-color-accent: #70d98b;
+  --app-color-accent-rgb: 112, 217, 139;
+  --app-color-bright: #8be4a0;
+  --app-color-light: #b1edbd;
+  --app-color-page: #0e1b12;
+  --app-color-surface: #16271b;
+  --app-color-surface-raised: #1e3324;
+  --app-color-surface-deep: #112116;
+  --app-color-navy: #1f492b;
+  --app-color-mid: #286d3b;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='coral'] {
+  --app-color-accent: #f29a82;
+  --app-color-accent-rgb: 242, 154, 130;
+  --app-color-bright: #f5ad99;
+  --app-color-light: #f8c5b7;
+  --app-color-page: #1d1412;
+  --app-color-surface: #2a1c19;
+  --app-color-surface-raised: #36231f;
+  --app-color-surface-deep: #211715;
+  --app-color-navy: #573329;
+  --app-color-mid: #8d4031;
 }
 
 .app-frame[data-color-theme] .auth-submit,
