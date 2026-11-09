@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">حسابداری</string>
+    <string name="title_activity_main">حسابداری</string>
+    <string name="package_name">com.accounting.app</string>
+    <string name="custom_url_scheme">com.accounting.app</string>
+</resources>

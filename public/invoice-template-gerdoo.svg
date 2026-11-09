@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="794" height="1123" viewBox="0 0 794 1123" direction="rtl">
+  <defs>
+    <linearGradient id="purple" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#b5a3d3"/>
+      <stop offset="1" stop-color="#7654ad"/>
+    </linearGradient>
+    <style>
+      text{font-family:Vazirmatn,Tahoma,Arial,sans-serif;fill:#17151a}
+      .tiny{font-size:10px}.small{font-size:12px}.normal{font-size:14px}.bold{font-weight:700}
+      .muted{fill:#625d68}.purple{fill:#624290}.line{stroke:#302c35;stroke-width:1}
+    </style>
+  </defs>
+  <rect width="794" height="1123" fill="#fff"/>
+  <path d="M25 0H770L742 37H0Z" fill="url(#purple)"/>
+  <path d="M0 0h8L0 10zm15 0h8L0 29v-8zm18 0h8L7 37H0zm18 0h8L25 37h-8zm18 0h8L43 37h-8z" fill="#fff"/>
+  <path d="M770 1123H24l28-37h742z" fill="url(#purple)"/>
+  <path d="M794 1123h-8l8-10zm-15 0h-8l23-29v8zm-18 0h-8l41-37h8zm-18 0h-8l41-37h8zm-18 0h-8l41-37h8z" fill="#fff"/>
+
+  <g transform="translate(40 79)">
+    <rect x="0" y="0" width="714" height="68" fill="#fff" stroke="#26222b"/>
+    <path d="M226 0v68M514 0v68M581 0v68M648 0v68" class="line"/>
+    <text x="370" y="43" text-anchor="middle" class="bold" font-size="24">فاکتور فروش</text>
+    <text x="113" y="27" text-anchor="middle" class="tiny muted">محل لوگو</text>
+    <text x="113" y="50" text-anchor="middle" class="normal bold purple">حسابداری گردو</text>
+    <text x="548" y="22" text-anchor="middle" class="tiny muted">شماره</text>
+    <text x="548" y="49" text-anchor="middle" class="tiny bold">۱۳۰۰۰۰۳۴۵</text>
+    <text x="614" y="22" text-anchor="middle" class="tiny muted">تاریخ</text>
+    <text x="614" y="49" text-anchor="middle" class="tiny bold">۱۴۰۵/۰۸/۱۲</text>
+    <text x="681" y="22" text-anchor="middle" class="tiny muted">ساعت</text>
+    <text x="681" y="49" text-anchor="middle" class="tiny bold">۱۹:۵۷</text>
+  </g>
+
+  <g transform="translate(40 147)">
+    <rect width="714" height="84" fill="#fff" stroke="#26222b"/>
+    <rect width="714" height="7" fill="#f3d982"/>
+    <text x="696" y="34" text-anchor="end" class="small bold">فروشنده: فروشگاه نمونه</text>
+    <text x="357" y="34" text-anchor="middle" class="tiny">شماره تماس: ۰۹۱۲ *** ****</text>
+    <text x="696" y="74" text-anchor="end" class="tiny">آدرس: استان، شهر، نشانی فروشگاه</text>
+    <path d="M0 84h714" stroke="#d4b853"/>
+  </g>
+  <g transform="translate(40 231)">
+    <rect width="714" height="77" fill="#fff" stroke="#26222b"/>
+    <rect width="714" height="7" fill="#f3d982"/>
+    <text x="696" y="33" text-anchor="end" class="small bold">خریدار: نام طرف حساب</text>
+    <text x="357" y="33" text-anchor="middle" class="tiny">شماره تماس: ۰۹۱۲ *** ****</text>
+    <text x="696" y="72" text-anchor="end" class="tiny">آدرس: نشانی خریدار</text>
+  </g>
+
+  <g transform="translate(40 321)">
+    <rect width="714" height="50" fill="#f5f0fa" stroke="#26222b"/>
+    <path d="M230 0v50M325 0v50M440 0v50M495 0v50M679 0v50" class="line"/>
+    <text x="696" y="20" text-anchor="middle" class="tiny bold">ردیف</text>
+    <text x="587" y="20" text-anchor="middle" class="tiny bold">شرح کالا و خدمات</text>
+    <text x="467" y="20" text-anchor="middle" class="tiny bold">تعداد</text>
+    <text x="382" y="20" text-anchor="middle" class="tiny bold">فی (ریال)</text>
+    <text x="277" y="20" text-anchor="middle" class="tiny bold">تخفیف</text>
+    <text x="115" y="20" text-anchor="middle" class="tiny bold">مبلغ کل (ریال)</text>
+    <text x="696" y="39" text-anchor="middle" class="tiny muted">No.</text>
+    <text x="587" y="39" text-anchor="middle" class="tiny muted">Description</text>
+    <text x="467" y="39" text-anchor="middle" class="tiny muted">QTY</text>
+    <text x="382" y="39" text-anchor="middle" class="tiny muted">Unit price</text>
+    <text x="277" y="39" text-anchor="middle" class="tiny muted">Discount</text>
+    <text x="115" y="39" text-anchor="middle" class="tiny muted">Amount</text>
+  </g>
+
+  <g transform="translate(40 371)">
+    <rect width="714" height="510" fill="#fff" stroke="#26222b"/>
+    <path d="M230 0v510M325 0v510M440 0v510M495 0v510M679 0v510" class="line"/>
+    <path d="M0 34h714M0 68h714M0 102h714M0 136h714M0 170h714M0 204h714M0 238h714M0 272h714M0 306h714M0 340h714M0 374h714M0 408h714M0 442h714M0 476h714" class="line"/>
+    <g class="small" text-anchor="middle">
+      <text x="696" y="23">۱</text><text x="587" y="23">کالای نمونهٔ یک</text><text x="467" y="23">۲</text><text x="382" y="23">۱۲۰٬۰۰۰</text><text x="277" y="23">۰</text><text x="115" y="23">۲۴۰٬۰۰۰</text>
+      <text x="696" y="57">۲</text><text x="587" y="57">کالای نمونهٔ دو</text><text x="467" y="57">۱</text><text x="382" y="57">۸۵٬۰۰۰</text><text x="277" y="57">۵٬۰۰۰</text><text x="115" y="57">۸۰٬۰۰۰</text>
+      <text x="696" y="91">۳</text><text x="587" y="91">خدمات نمونه</text><text x="467" y="91">۱</text><text x="382" y="91">۵۰٬۰۰۰</text><text x="277" y="91">۰</text><text x="115" y="91">۵۰٬۰۰۰</text>
+      <text x="696" y="125">۴</text><text x="696" y="159">۵</text><text x="696" y="193">۶</text><text x="696" y="227">۷</text>
+      <text x="696" y="261">۸</text><text x="696" y="295">۹</text><text x="696" y="329">۱۰</text>
+      <text x="696" y="363">۱۱</text><text x="696" y="397">۱۲</text><text x="696" y="431">۱۳</text>
+      <text x="696" y="465">۱۴</text><text x="696" y="499">۱۵</text>
+    </g>
+  </g>
+
+  <g transform="translate(40 881)">
+    <rect width="714" height="170" fill="#fff" stroke="#26222b"/>
+    <path d="M360 0v170M0 43h714" class="line"/>
+    <text x="696" y="28" text-anchor="end" class="small bold">توضیحات و شرایط</text>
+    <text x="696" y="67" text-anchor="end" class="tiny">مبلغ به حروف: سیصد و هفتاد هزار ریال</text>
+    <text x="696" y="90" text-anchor="end" class="tiny">توضیحات: کالاها سالم تحویل خریدار شد.</text>
+    <text x="696" y="127" text-anchor="end" class="tiny">تخفیف و اضافات مطابق اقلام فاکتور محاسبه می‌شود.</text>
+    <text x="696" y="155" text-anchor="end" class="small bold purple">مبلغ قابل پرداخت: ۳۷۰٬۰۰۰ ریال</text>
+    <text x="342" y="72" text-anchor="middle" class="small bold">مهر و امضای فروشنده</text>
+    <text x="342" y="139" text-anchor="middle" class="small bold">مهر و امضای خریدار</text>
+    <path d="M0 85h360" stroke="#aaa2b2"/>
+  </g>
+  <text x="397" y="1080" text-anchor="middle" class="tiny muted">با سپاس از خرید شما · حسابداری گردو</text>
+</svg>
