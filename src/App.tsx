@@ -1942,8 +1942,6 @@ function App() {
   const [salesInvoiceAdjustmentValue, setSalesInvoiceAdjustmentValue] = useState(0)
   const [salesInvoiceAdjustmentAffectsProfit, setSalesInvoiceAdjustmentAffectsProfit] = useState(true)
   const [salesInvoiceNote, setSalesInvoiceNote] = useState('')
-  const [salesInvoiceNoteDialogOpen, setSalesInvoiceNoteDialogOpen] = useState(false)
-  const [salesInvoiceNoteDraft, setSalesInvoiceNoteDraft] = useState('')
   const [salesInvoiceAttachment, setSalesInvoiceAttachment] = useState<{ file: File; previewUrl: string } | null>(null)
   const [salesInvoiceDraftAttachment, setSalesInvoiceDraftAttachment] = useState<{ file: File; previewUrl: string } | null>(null)
   const [salesInvoiceAttachmentPickerOpen, setSalesInvoiceAttachmentPickerOpen] = useState(false)
@@ -2090,7 +2088,6 @@ function App() {
       !salesInvoiceDatePickerOpen
       && !salesInvoiceTimePickerOpen
       && !salesInvoiceAttachmentPickerOpen
-      && !salesInvoiceNoteDialogOpen
       && !salesInvoiceBarcodeScannerOpen
       && !salesInvoiceReceiptOpen
       && !moneyDocumentKind
@@ -2111,7 +2108,6 @@ function App() {
         setSalesInvoiceDatePickerOpen(false)
         setSalesInvoiceTimePickerOpen(false)
         setSalesInvoiceAttachmentPickerOpen(false)
-        setSalesInvoiceNoteDialogOpen(false)
         setSalesInvoiceBarcodeScannerOpen(false)
         setSalesInvoiceReceiptOpen(false)
         setMoneyDocumentKind(null)
@@ -2147,7 +2143,6 @@ function App() {
     salesInvoiceDatePickerOpen,
     salesInvoiceTimePickerOpen,
     salesInvoiceAttachmentPickerOpen,
-    salesInvoiceNoteDialogOpen,
     salesInvoiceBarcodeScannerOpen,
     salesInvoiceReceiptOpen,
     moneyDocumentKind,
@@ -2912,8 +2907,6 @@ function App() {
     setSalesInvoicePersonPickerGroupName('')
     setSalesInvoicePersonPickerGroupError('')
     setSalesInvoicePersonPickerReturnTab(null)
-    setSalesInvoiceNoteDialogOpen(false)
-    setSalesInvoiceNoteDraft('')
     setSalesInvoiceConfirmation(null)
     setSalesInvoiceMoreOpen(false)
     setSalesInvoicePaymentMenuOpen(false)
@@ -3965,11 +3958,6 @@ function App() {
     setSalesInvoiceDraftAttachment(salesInvoiceAttachment)
     setSalesInvoiceAttachmentError('')
     setSalesInvoiceAttachmentPickerOpen(true)
-  }
-
-  const openSalesInvoiceNoteDialog = () => {
-    setSalesInvoiceNoteDraft(salesInvoiceNote.trim())
-    setSalesInvoiceNoteDialogOpen(true)
   }
 
   const closeSalesInvoiceAttachmentPicker = () => {
@@ -9393,14 +9381,13 @@ function App() {
                 <button
                   className={salesInvoiceNote ? 'active' : ''}
                   type="button"
-                  aria-label={returnInvoiceMode
-                    ? `افزودن توضیحات به سند ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'}`
-                    : purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور'}
-                  aria-haspopup={returnInvoiceMode ? 'dialog' : undefined}
-                  aria-expanded={returnInvoiceMode ? salesInvoiceNoteDialogOpen : Boolean(salesInvoiceNote)}
-                  onClick={() => returnInvoiceMode
-                    ? openSalesInvoiceNoteDialog()
-                    : setSalesInvoiceNote(salesInvoiceNote ? '' : ' ')}
+                  aria-label={returnSalesInvoiceMode
+                    ? 'یادداشت فاکتور برگشت از فروش'
+                    : returnPurchaseInvoiceMode
+                      ? 'یادداشت فاکتور برگشت به خرید'
+                      : purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور فروش'}
+                  aria-expanded={Boolean(salesInvoiceNote)}
+                  onClick={() => setSalesInvoiceNote(salesInvoiceNote ? '' : ' ')}
                 >
                   <span aria-hidden="true">▤</span>
                   یادداشت
@@ -9422,13 +9409,21 @@ function App() {
                 </button>
               </section>
 
-              {salesInvoiceNote !== '' && !returnInvoiceMode && (
+              {salesInvoiceNote !== '' && (
                 <textarea
                   className="sales-invoice-note"
-                  aria-label={purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور فروش'}
-                  placeholder={purchaseInvoiceMode
-                    ? 'یادداشت فاکتور خرید را بنویسید...'
-                    : 'یادداشت فاکتور فروش را بنویسید...'}
+                  aria-label={returnSalesInvoiceMode
+                    ? 'یادداشت فاکتور برگشت از فروش'
+                    : returnPurchaseInvoiceMode
+                      ? 'یادداشت فاکتور برگشت به خرید'
+                      : purchaseInvoiceMode ? 'یادداشت فاکتور خرید' : 'یادداشت فاکتور فروش'}
+                  placeholder={returnSalesInvoiceMode
+                    ? 'یادداشت فاکتور برگشت از فروش را بنویسید...'
+                    : returnPurchaseInvoiceMode
+                      ? 'یادداشت فاکتور برگشت به خرید را بنویسید...'
+                      : purchaseInvoiceMode
+                        ? 'یادداشت فاکتور خرید را بنویسید...'
+                        : 'یادداشت فاکتور فروش را بنویسید...'}
                   value={salesInvoiceNote.trimStart()}
                   onChange={(event) => setSalesInvoiceNote(event.target.value)}
                   rows={2}
@@ -9658,56 +9653,6 @@ function App() {
                       : salesInvoiceEditingInvoice ? 'ذخیره اصلاحات' : 'ثبت فاکتور'}
               </button>
             </footer>
-
-            {returnInvoiceMode && salesInvoiceNoteDialogOpen && (
-              <div
-                className="sales-invoice-form-backdrop return-sales-note-backdrop"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setSalesInvoiceNoteDialogOpen(false)
-                }}
-              >
-                <section
-                  className="return-sales-note-dialog"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="return-sales-note-title"
-                >
-                  <h2 id="return-sales-note-title">افزودن توضیحات به سند</h2>
-                  <label htmlFor="return-sales-note-input">
-                    توضیحات
-                    <span>({formatPersonCode(salesInvoiceNoteDraft.length)}/۲۵۵ کاراکتر)</span>
-                  </label>
-                  <textarea
-                    id="return-sales-note-input"
-                    autoFocus
-                    maxLength={255}
-                    rows={6}
-                    value={salesInvoiceNoteDraft}
-                    onChange={(event) => setSalesInvoiceNoteDraft(event.target.value)}
-                  />
-                  <footer>
-                    <button
-                      type="button"
-                      onClick={() => setSalesInvoiceNoteDialogOpen(false)}
-                    >
-                      لغو
-                      <span aria-hidden="true">×</span>
-                    </button>
-                    <button
-                      className="confirm"
-                      type="button"
-                      onClick={() => {
-                        setSalesInvoiceNote(salesInvoiceNoteDraft.trim())
-                        setSalesInvoiceNoteDialogOpen(false)
-                      }}
-                    >
-                      تأیید
-                      <span aria-hidden="true">✓</span>
-                    </button>
-                  </footer>
-                </section>
-              </div>
-            )}
 
             {salesInvoiceDatePickerOpen && (
               <div
