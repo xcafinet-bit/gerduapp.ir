@@ -374,6 +374,16 @@ const appColorThemes = [
     wash: '#f0fbf2',
     ink: '#315a3a',
   },
+  {
+    id: 'coral',
+    name: 'مرجانی',
+    description: 'مرجانی گرم و پرنشاط',
+    accent: '#e76f51',
+    deep: '#b94a36',
+    soft: '#fde9e3',
+    wash: '#fff5f1',
+    ink: '#75483d',
+  },
 ] as const
 type AppColorTheme = (typeof appColorThemes)[number]['id']
 const COLOR_THEME_STORAGE_KEY = 'gerdoo-color-theme-v1'

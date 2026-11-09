@@ -17636,6 +17636,24 @@ button:focus-visible {
   --app-color-surface-deep: #e0f1e4;
 }
 
+.app-frame[data-color-theme='coral'] {
+  --app-color-accent: #e76f51;
+  --app-color-accent-rgb: 231, 111, 81;
+  --app-color-bright: #f08a70;
+  --app-color-deep: #b94a36;
+  --app-color-light: #f6b6a5;
+  --app-color-soft: #fde9e3;
+  --app-color-tint: #fff5f1;
+  --app-color-border: #f4d5cc;
+  --app-color-navy: #573329;
+  --app-color-mid: #b94a36;
+  --app-color-ink: #75483d;
+  --app-color-page: #fbefeb;
+  --app-color-surface: #fff9f7;
+  --app-color-surface-raised: #fff1ed;
+  --app-color-surface-deep: #f8e6e0;
+}
+
 .app-frame[data-theme='dark'] {
   --app-color-page: #0c171d;
   --app-color-surface: #15242b;
@@ -17777,6 +17795,19 @@ button:focus-visible {
   --app-color-surface-deep: #112116;
   --app-color-navy: #1f492b;
   --app-color-mid: #286d3b;
+}
+
+.app-frame[data-theme='dark'][data-color-theme='coral'] {
+  --app-color-accent: #f29a82;
+  --app-color-accent-rgb: 242, 154, 130;
+  --app-color-bright: #f5ad99;
+  --app-color-light: #f8c5b7;
+  --app-color-page: #1d1412;
+  --app-color-surface: #2a1c19;
+  --app-color-surface-raised: #36231f;
+  --app-color-surface-deep: #211715;
+  --app-color-navy: #573329;
+  --app-color-mid: #8d4031;
 }
 
 .app-frame[data-color-theme] .auth-submit,
