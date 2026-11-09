@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { App as CapacitorApp } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
 import TrazinoBook from './TrazinoBook'
 import './App.css'
 
@@ -1960,6 +1962,8 @@ function App() {
   const suppressInventoryFilterClick = useRef(false)
   const [notice, setNotice] = useState('')
   const [authNotice, setAuthNotice] = useState('')
+  const backNavigationHandlerRef = useRef<() => boolean>(() => false)
+  const lastBackPressRef = useRef(0)
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const attachmentUrls = salesInvoiceAttachmentUrlsRef.current
@@ -4083,6 +4087,40 @@ function App() {
     setSalesInvoiceOpenedFromList(false)
   }
 
+  const handleBackNavigation = (): boolean => {
+    if (document.querySelector('[role="dialog"]')) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      lastBackPressRef.current = 0
+      return false
+    }
+
+    if (activeTab !== 'خانه') {
+      if (activeTab === 'فاکتور فروش' && salesInvoiceConfirmation) {
+        closeSavedSalesInvoice()
+      } else {
+        setActiveTab('خانه')
+      }
+      lastBackPressRef.current = 0
+      return false
+    }
+
+    const pressedAt = now.getTime()
+    if (pressedAt - lastBackPressRef.current <= 2000) {
+      lastBackPressRef.current = 0
+      setNotice('')
+      if (Capacitor.isNativePlatform()) void CapacitorApp.exitApp()
+      return true
+    }
+
+    lastBackPressRef.current = pressedAt
+    const message = 'برای خروج، یک بار دیگر دکمهٔ بازگشت را بزنید.'
+    setNotice(message)
+    window.setTimeout(() => {
+      setNotice((current) => current === message ? '' : current)
+    }, 2000)
+    return false
+  }
+
   const openSavedSalesInvoice = (invoice: SavedSalesInvoice) => {
     setSalesInvoiceConfirmation(invoice)
     setSalesInvoiceOpenedFromList(true)
@@ -5961,6 +5999,45 @@ function App() {
       setInventoryWarehouseError('ذخیرهٔ انبار انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
     }
   }
+
+  useEffect(() => {
+    backNavigationHandlerRef.current = handleBackNavigation
+  })
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let disposed = false
+    let removeBackButtonListener: (() => void) | undefined
+    void CapacitorApp.addListener('backButton', () => backNavigationHandlerRef.current())
+      .then((listener) => {
+        const removeListener = () => {
+          void listener.remove()
+        }
+        if (disposed) removeListener()
+        else removeBackButtonListener = removeListener
+      })
+
+    return () => {
+      disposed = true
+      removeBackButtonListener?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return
+
+    const handlePopState = () => {
+      const shouldExit = backNavigationHandlerRef.current()
+      if (!shouldExit) {
+        window.history.pushState({ trazinoBackGuard: true }, '')
+      }
+    }
+
+    window.history.pushState({ trazinoBackGuard: true }, '')
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const visibleAccounts = storedAccounts.accounts.filter((account) => account.kind === accountListFilter)
 
