@@ -385,6 +385,16 @@ const appColorThemes = [
     wash: '#fff5f1',
     ink: '#75483d',
   },
+  {
+    id: 'emerald',
+    name: 'زمردی',
+    description: 'سبز زمردی عمیق و آرام',
+    accent: '#16804a',
+    deep: '#0d6036',
+    soft: '#e5f4e9',
+    wash: '#f2f8f3',
+    ink: '#28513a',
+  },
 ] as const
 type AppColorTheme = (typeof appColorThemes)[number]['id']
 const COLOR_THEME_STORAGE_KEY = 'gerdoo-color-theme-v1'
