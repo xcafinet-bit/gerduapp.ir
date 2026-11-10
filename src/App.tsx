@@ -932,23 +932,23 @@ function isSavedSalesInvoice(value: unknown): value is SavedSalesInvoice {
     && typeof invoice.buyerName === 'string'
     && Array.isArray(invoice.lines)
     && invoice.lines.length > 0
-    && invoice.lines.every((line) => (
-      Boolean(line)
-      && typeof line === 'object'
-      && typeof (line as Record<string, unknown>).itemId === 'string'
-      && typeof (line as Record<string, unknown>).description === 'string'
-      && isInventoryKind(String((line as Record<string, unknown>).kind))
-      && typeof (line as Record<string, unknown>).unit === 'string'
-      && typeof (line as Record<string, unknown>).quantity === 'number'
-      && Number.isFinite((line as Record<string, unknown>).quantity)
-      && (line as Record<string, unknown>).quantity > 0
-      && typeof (line as Record<string, unknown>).unitPrice === 'number'
-      && Number.isFinite((line as Record<string, unknown>).unitPrice)
-      && typeof (line as Record<string, unknown>).discount === 'number'
-      && Number.isFinite((line as Record<string, unknown>).discount)
-      && typeof (line as Record<string, unknown>).total === 'number'
-      && Number.isFinite((line as Record<string, unknown>).total)
-    ))
+    && invoice.lines.every((line) => {
+      if (!line || typeof line !== 'object') return false
+      const record = line as Record<string, unknown>
+      return typeof record.itemId === 'string'
+        && typeof record.description === 'string'
+        && isInventoryKind(String(record.kind))
+        && typeof record.unit === 'string'
+        && typeof record.quantity === 'number'
+        && Number.isFinite(record.quantity)
+        && record.quantity > 0
+        && typeof record.unitPrice === 'number'
+        && Number.isFinite(record.unitPrice)
+        && typeof record.discount === 'number'
+        && Number.isFinite(record.discount)
+        && typeof record.total === 'number'
+        && Number.isFinite(record.total)
+    })
     && Array.isArray(invoice.adjustments)
     && invoice.adjustments.every((adjustment) => (
       Boolean(adjustment)
@@ -1426,14 +1426,7 @@ function isAccountTransfer(value: unknown): value is AccountTransfer {
       || transfer.calendar === 'islamic-umalqura'
       || transfer.calendar === 'gregory')
     && typeof transfer.note === 'string'
-    && (attachment === undefined
-      || (typeof attachment === 'object'
-        && attachment !== null
-        && typeof (attachment as Record<string, unknown>).name === 'string'
-        && typeof (attachment as Record<string, unknown>).type === 'string'
-        && (attachment as Record<string, unknown>).type.toString().startsWith('image/')
-        && typeof (attachment as Record<string, unknown>).dataUrl === 'string'
-        && (attachment as Record<string, unknown>).dataUrl.toString().startsWith('data:image/')))
+    && (attachment === undefined || isImageDataAttachment(attachment))
     && typeof transfer.createdAt === 'string'
 }
 
@@ -1535,17 +1528,22 @@ type AccountingBackup = {
 function isAccountingBackup(value: unknown): value is AccountingBackup {
   if (!value || typeof value !== 'object') return false
   const backup = value as Record<string, unknown>
+  const activeStoreId = backup.activeStoreId
+  const legacyDataOwnerStoreId = backup.legacyDataOwnerStoreId
   if (
     backup.format !== 'gerdoo-accounting-backup'
     || backup.version !== 1
     || typeof backup.createdAt !== 'string'
     || !Number.isFinite(Date.parse(backup.createdAt))
     || !Array.isArray(backup.stores)
-    || !(backup.activeStoreId === null || (Number.isSafeInteger(backup.activeStoreId) && (backup.activeStoreId as number) > 0))
+    || !(activeStoreId === null
+      || (typeof activeStoreId === 'number' && Number.isSafeInteger(activeStoreId) && activeStoreId > 0))
     || (
-      backup.legacyDataOwnerStoreId !== undefined
-      && !(backup.legacyDataOwnerStoreId === null
-        || (Number.isSafeInteger(backup.legacyDataOwnerStoreId) && (backup.legacyDataOwnerStoreId as number) > 0))
+      legacyDataOwnerStoreId !== undefined
+      && !(legacyDataOwnerStoreId === null
+        || (typeof legacyDataOwnerStoreId === 'number'
+          && Number.isSafeInteger(legacyDataOwnerStoreId)
+          && legacyDataOwnerStoreId > 0))
     )
   ) return false
 
@@ -1579,10 +1577,12 @@ function isAccountingBackup(value: unknown): value is AccountingBackup {
     storeIds.add(record.store.id)
   }
 
-  return (backup.activeStoreId === null || storeIds.has(backup.activeStoreId))
-    && (backup.legacyDataOwnerStoreId === undefined
-      || backup.legacyDataOwnerStoreId === null
-      || storeIds.has(backup.legacyDataOwnerStoreId))
+  return (activeStoreId === null || (
+    typeof activeStoreId === 'number' && storeIds.has(activeStoreId)
+  ))
+    && (legacyDataOwnerStoreId === undefined
+      || legacyDataOwnerStoreId === null
+      || (typeof legacyDataOwnerStoreId === 'number' && storeIds.has(legacyDataOwnerStoreId)))
 }
 
 const userTones = ['mint', 'blue', 'amber', 'violet', 'coral'] as const
@@ -1768,8 +1768,9 @@ function synchronizeInventoryCatalog(
     }
 
     const catalogId = item.catalogId ?? item.id
-    const warehouse = allServiceWarehouses.includes(item.warehouse ?? '')
-      ? item.warehouse!
+    const itemWarehouse = item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE
+    const warehouse = allServiceWarehouses.includes(itemWarehouse)
+      ? itemWarehouse
       : DEFAULT_SERVICE_WAREHOUSE
     serviceItems.push({ ...item, catalogId, warehouse })
   }
@@ -1787,18 +1788,21 @@ function synchronizeInventoryCatalog(
     centralByIdentity.set(key, [...(centralByIdentity.get(key) ?? []), item])
   }
 
-  const catalogRecords = warehouseItems.map((item) => {
-    const warehouse = item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE
-    const matches = item.catalogId || warehouse === DEFAULT_INVENTORY_WAREHOUSE
-      ? []
-      : centralByIdentity.get(getIdentity(item)) ?? []
-    const centralMatch = matches.length === 1 ? matches[0] : undefined
-    return {
-      ...item,
-      catalogId: item.catalogId ?? centralMatch?.catalogId ?? centralMatch?.id ?? item.id,
-      warehouse,
-    }
-  }).concat(serviceItems)
+  const catalogRecords: InventoryRecord[] = [
+    ...warehouseItems.map((item) => {
+      const warehouse = item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE
+      const matches = item.catalogId || warehouse === DEFAULT_INVENTORY_WAREHOUSE
+        ? []
+        : centralByIdentity.get(getIdentity(item)) ?? []
+      const centralMatch = matches.length === 1 ? matches[0] : undefined
+      return {
+        ...item,
+        catalogId: item.catalogId ?? centralMatch?.catalogId ?? centralMatch?.id ?? item.id,
+        warehouse,
+      }
+    }),
+    ...serviceItems,
+  ]
   const canonicalByCatalog = new Map<string, InventoryRecord>()
   for (const item of catalogRecords) {
     const catalogId = item.catalogId ?? item.id
@@ -2786,7 +2790,9 @@ function App() {
     setSecurityPermissionStatus((current) => ({
       ...current,
       notifications: notificationStatus,
-      camera: secureContext && navigator.mediaDevices?.getUserMedia ? current.camera : 'unsupported',
+      camera: secureContext && typeof navigator.mediaDevices?.getUserMedia === 'function'
+        ? current.camera
+        : 'unsupported',
     }))
 
     if (!secureContext || typeof PublicKeyCredential === 'undefined') {
@@ -14777,7 +14783,7 @@ function App() {
                     className="sales-invoice-receipt-date"
                     type="button"
                     aria-label={`انتخاب تاریخ ${moneyDocumentKind}`}
-                    onClick={openMoneyDocumentDatePicker}
+                    onClick={() => openMoneyDocumentDatePicker()}
                   >
                     <span aria-hidden="true">▦</span>
                     <span className="sales-invoice-receipt-control-copy">
