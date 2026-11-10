@@ -565,6 +565,7 @@ type AccountRecord = {
   name: string
   bankName: string
   accountNumber: string
+  iban?: string
   ownerName?: string
   cardNumber?: string
   smsNumber?: string
@@ -576,6 +577,8 @@ type AccountFormFields = {
   kind: AccountKind
   name: string
   bankName: string
+  accountNumber: string
+  iban: string
   cardNumberParts: [string, string, string, string]
   balance: string
   smsNumber: string
@@ -692,6 +695,8 @@ const emptyAccountForm: AccountFormFields = {
   kind: 'صندوق',
   name: '',
   bankName: '',
+  accountNumber: '',
+  iban: '',
   cardNumberParts: ['', '', '', ''],
   balance: '0',
   smsNumber: '',
@@ -1480,6 +1485,7 @@ function isAccountRecord(value: unknown): value is AccountRecord {
     && typeof account.name === 'string'
     && typeof account.bankName === 'string'
     && typeof account.accountNumber === 'string'
+    && (account.iban === undefined || typeof account.iban === 'string')
     && (account.ownerName === undefined || typeof account.ownerName === 'string')
     && (account.cardNumber === undefined || typeof account.cardNumber === 'string')
     && (account.smsNumber === undefined || typeof account.smsNumber === 'string')
@@ -2195,6 +2201,17 @@ function normalizeAccountDigits(value: string) {
     .replace(/\D/g, '')
 }
 
+function normalizeAccountIban(value: string) {
+  return value
+    .replace(/[۰-۹٠-٩]/g, (digit) => {
+      const code = digit.charCodeAt(0)
+      return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660)
+    })
+    .toUpperCase()
+    .replace(/[\s-]/g, '')
+    .slice(0, 26)
+}
+
 function formatAccountBalanceInput(value: string) {
   return normalizeAccountDigits(value)
     .replace(/\B(?=(\d{3})+(?!\d))/g, '٬')
@@ -2427,6 +2444,7 @@ function App() {
   const [storedAccounts, setStoredAccounts] = useState(() => readStoredAccounts(activeStoreId))
   const [accountListFilter, setAccountListFilter] = useState<AccountKind>('بانکی')
   const [accountToolbarMenuOpen, setAccountToolbarMenuOpen] = useState(false)
+  const [accountActionMenuId, setAccountActionMenuId] = useState<string | null>(null)
   const [storedAccountTransfers, setStoredAccountTransfers] = useState(() => readStoredAccountTransfers(activeStoreId))
   const [accountTransferOpen, setAccountTransferOpen] = useState(false)
   const [accountTransferFields, setAccountTransferFields] = useState<AccountTransferFormFields>(() => emptyAccountTransferForm())
@@ -2441,6 +2459,7 @@ function App() {
   const [accountTransferDraftAttachment, setAccountTransferDraftAttachment] = useState<AccountTransferAttachment | null>(null)
   const [accountTransferAttachmentError, setAccountTransferAttachmentError] = useState('')
   const [accountFormOpen, setAccountFormOpen] = useState(false)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
   const [accountFormFields, setAccountFormFields] = useState(emptyAccountForm)
   const [accountFormError, setAccountFormError] = useState('')
   const [visibleAccountCardIds, setVisibleAccountCardIds] = useState<Set<string>>(() => new Set())
@@ -2549,6 +2568,8 @@ function App() {
   const peopleToolbarRef = useRef<HTMLDivElement>(null)
   const personGroupPickerRef = useRef<HTMLDivElement>(null)
   const accountReportGroupPickerRef = useRef<HTMLDivElement>(null)
+  const accountActionPressTimer = useRef<number | null>(null)
+  const accountActionPressOrigin = useRef<{ x: number; y: number } | null>(null)
   const peopleGroupPressTimer = useRef<number | null>(null)
   const peopleGroupPressOrigin = useRef<{ x: number; y: number } | null>(null)
   const suppressPeopleGroupClick = useRef(false)
@@ -2777,15 +2798,32 @@ function App() {
       }
     : inventoryOptions
   const inventoryGroups = activeWarehouseTaxonomy.groupsByKind[inventoryKind]
-  const inventoryServiceItems = storedInventoryRecords.items.filter(
-    (item) => item.kind === 'خدمات'
-      && (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === activeWarehouse,
-  )
-  const inventoryItems = storedInventoryRecords.items.filter(
-    (item) => item.kind === 'خدمات'
-      ? (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === activeWarehouse
-      : (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
-  )
+  const inventoryServiceItemsByCatalog = new Map<string, InventoryRecord>()
+  for (const item of storedInventoryRecords.items) {
+    if (item.kind !== 'خدمات') continue
+    const catalogId = item.catalogId ?? item.id
+    const current = inventoryServiceItemsByCatalog.get(catalogId)
+    if (!current || item.warehouse === DEFAULT_SERVICE_WAREHOUSE) {
+      inventoryServiceItemsByCatalog.set(catalogId, item)
+    }
+  }
+  const inventoryServiceItems = [...inventoryServiceItemsByCatalog.values()]
+  const inventoryProductionItemsByCatalog = new Map<string, InventoryRecord>()
+  for (const item of storedInventoryRecords.items) {
+    if (item.kind !== 'تولید') continue
+    const catalogId = item.catalogId ?? item.id
+    const current = inventoryProductionItemsByCatalog.get(catalogId)
+    if (!current || (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === DEFAULT_INVENTORY_WAREHOUSE) {
+      inventoryProductionItemsByCatalog.set(catalogId, item)
+    }
+  }
+  const inventoryItems = inventoryKind === 'خدمات'
+    ? inventoryServiceItems
+    : inventoryKind === 'تولید'
+      ? [...inventoryProductionItemsByCatalog.values()]
+      : storedInventoryRecords.items.filter(
+          (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
+        )
   const salesInvoiceDraftInventoryKind = salesInvoiceDraftItem?.kind ?? salesInvoiceCatalogKind ?? 'کالا'
   const salesInvoiceWarehouseOptions = salesInvoiceDraftInventoryKind === 'خدمات'
     ? [...new Set([DEFAULT_SERVICE_WAREHOUSE, ...(inventoryOptions.serviceWarehouses ?? [])])]
@@ -3106,6 +3144,25 @@ function App() {
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [accountFormOpen, accountBankPickerOpen])
+
+  useEffect(() => {
+    if (!accountActionMenuId) return
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const card = event.target instanceof Element
+        ? event.target.closest<HTMLElement>('[data-account-card]')
+        : null
+      if (card?.dataset.accountCard !== accountActionMenuId) setAccountActionMenuId(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountActionMenuId(null)
+    }
+    window.addEventListener('pointerdown', closeOnOutsideClick)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', closeOnOutsideClick)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [accountActionMenuId])
 
   useEffect(() => {
     const activeFilter = peopleFiltersRef.current?.querySelector<HTMLButtonElement>(
@@ -3589,11 +3646,90 @@ function App() {
   }
 
   const openAccountForm = () => {
-    setAccountFormFields(emptyAccountForm)
+    setEditingAccountId(null)
+    setAccountFormFields({ ...emptyAccountForm, kind: 'بانکی' })
     setAccountFormError('')
     setAccountBankSearch('')
     setAccountBankPickerOpen(false)
     setAccountFormOpen(true)
+  }
+
+  const openAccountEditForm = (account: AccountRecord) => {
+    const cardNumber = account.cardNumber ?? ''
+    setEditingAccountId(account.id)
+    setAccountFormFields({
+      kind: account.kind,
+      name: account.ownerName ?? account.name,
+      bankName: account.bankName,
+      accountNumber: account.accountNumber,
+      iban: account.iban ?? '',
+      cardNumberParts: [
+        cardNumber.slice(0, 4),
+        cardNumber.slice(4, 8),
+        cardNumber.slice(8, 12),
+        cardNumber.slice(12, 16),
+      ],
+      balance: formatAccountBalanceInput(String(account.balance)),
+      smsNumber: account.smsNumber ?? '',
+    })
+    setAccountFormError('')
+    setAccountBankSearch('')
+    setAccountBankPickerOpen(false)
+    setAccountActionMenuId(null)
+    setAccountFormOpen(true)
+  }
+
+  const clearAccountActionPress = () => {
+    if (accountActionPressTimer.current !== null) {
+      window.clearTimeout(accountActionPressTimer.current)
+      accountActionPressTimer.current = null
+    }
+    accountActionPressOrigin.current = null
+  }
+
+  const startAccountActionPress = (event: ReactPointerEvent<HTMLElement>, account: AccountRecord) => {
+    clearAccountActionPress()
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+    if ((event.target as Element).closest('.account-card-action-trigger, .account-bank-card-visibility')) return
+    const { clientX, clientY } = event
+    accountActionPressOrigin.current = { x: clientX, y: clientY }
+    accountActionPressTimer.current = window.setTimeout(() => {
+      setAccountActionMenuId(account.id)
+      accountActionPressTimer.current = null
+      accountActionPressOrigin.current = null
+    }, 550)
+  }
+
+  const moveAccountActionPress = (event: ReactPointerEvent<HTMLElement>) => {
+    const origin = accountActionPressOrigin.current
+    if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+      clearAccountActionPress()
+    }
+  }
+
+  const deleteAccount = (account: AccountRecord) => {
+    if (!activeStoreId) {
+      setNotice('برای حذف حساب ابتدا یک فروشگاه را انتخاب کنید.')
+      return
+    }
+    const accounts = storedAccounts.accounts.filter((item) => item.id !== account.id)
+    try {
+      localStorage.setItem(
+        getActiveStoreDataStorageKey(ACCOUNTS_STORAGE_KEY, activeStoreId),
+        JSON.stringify(accounts),
+      )
+      setStoredAccounts({ accounts, error: '' })
+      setVisibleAccountCardIds((current) => {
+        const next = new Set(current)
+        next.delete(account.id)
+        return next
+      })
+      setAccountActionMenuId(null)
+      setNotice('حساب حذف شد.')
+      window.setTimeout(() => setNotice(''), 2600)
+    } catch {
+      setNotice('حذف حساب انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+    }
   }
 
   const openAccountTransferForm = () => {
@@ -3718,6 +3854,11 @@ function App() {
         return
       }
     }
+    const enteredIban = normalizeAccountIban(accountFormFields.iban)
+    if (accountFormFields.kind === 'بانکی' && enteredIban && !/^(?:IR)?\d{24}$/.test(enteredIban)) {
+      setAccountFormError('شماره شبا باید با IR و ۲۴ رقم وارد شود.')
+      return
+    }
     const balance = parsePersonBalance(accountFormFields.balance)
     if (balance === null) {
       setAccountFormError('موجودی اولیه باید یک عدد صحیح و نامنفی باشد.')
@@ -3728,19 +3869,33 @@ function App() {
       return
     }
 
+    const existingAccount = editingAccountId
+      ? storedAccounts.accounts.find((item) => item.id === editingAccountId)
+      : undefined
+    if (editingAccountId && !existingAccount) {
+      setAccountFormError('حساب موردنظر برای ویرایش پیدا نشد.')
+      return
+    }
     const account: AccountRecord = {
-      id: `account-${Date.now()}`,
+      id: existingAccount?.id ?? `account-${Date.now()}`,
       kind: accountFormFields.kind,
       name: ownerName,
       bankName: accountFormFields.kind === 'بانکی' ? accountFormFields.bankName : '',
-      accountNumber: '',
+      accountNumber: accountFormFields.kind === 'بانکی'
+        ? normalizeAccountDigits(accountFormFields.accountNumber)
+        : '',
+      iban: accountFormFields.kind === 'بانکی' && enteredIban
+        ? enteredIban.startsWith('IR') ? enteredIban : `IR${enteredIban}`
+        : undefined,
       ownerName: accountFormFields.kind === 'بانکی' ? ownerName : undefined,
       cardNumber: accountFormFields.kind === 'بانکی' ? cardNumber : undefined,
       smsNumber: accountFormFields.kind === 'بانکی' ? accountFormFields.smsNumber.trim() : undefined,
       balance,
-      createdAt: new Date().toISOString(),
+      createdAt: existingAccount?.createdAt ?? new Date().toISOString(),
     }
-    const accounts = [...storedAccounts.accounts, account]
+    const accounts = existingAccount
+      ? storedAccounts.accounts.map((item) => item.id === existingAccount.id ? account : item)
+      : [...storedAccounts.accounts, account]
     try {
       localStorage.setItem(
         getActiveStoreDataStorageKey(ACCOUNTS_STORAGE_KEY, activeStoreId),
@@ -3748,7 +3903,8 @@ function App() {
       )
       setStoredAccounts({ accounts, error: '' })
       setAccountFormOpen(false)
-      setNotice('حساب جدید اضافه شد.')
+      setEditingAccountId(null)
+      setNotice(existingAccount ? 'تغییرات حساب ذخیره شد.' : 'حساب جدید اضافه شد.')
       window.setTimeout(() => setNotice(''), 2600)
     } catch {
       setAccountFormError('ذخیرهٔ حساب انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
@@ -6697,7 +6853,7 @@ function App() {
             kind: 'خدمات',
             stock: 0,
             purchasePrice: 0,
-            warehouse: activeWarehouse,
+            warehouse: DEFAULT_SERVICE_WAREHOUSE,
           }
           return [...storedInventoryRecords.items, item]
         })()
@@ -12230,12 +12386,12 @@ function App() {
               </div>
               <h1 id="accounts-title">حساب‌های من</h1>
               <p>موجودی صندوق و حساب‌های بانکی فروشگاه</p>
-              <div className="accounts-total">
-                <span>موجودی کل حساب‌ها</span>
-                <strong>{formatPersonBalance(storedAccounts.accounts.reduce((total, account) => total + account.balance, 0))} <small>ریال</small></strong>
-              </div>
             </section>
 
+            <div className="accounts-total">
+              <span>موجودی کل حساب‌ها</span>
+              <strong>{formatPersonBalance(storedAccounts.accounts.reduce((total, account) => total + account.balance, 0))} <small>ریال</small></strong>
+            </div>
             <div className="accounts-category-tabs" role="group" aria-label="دسته‌بندی حساب‌ها">
               {([
                 { kind: 'بانکی', label: 'حساب‌ها' },
@@ -12323,9 +12479,68 @@ function App() {
                 <div className="accounts-cards">
                   {visibleAccounts.map((account) => {
                     const bank = bankOptions.find((option) => option.name === account.bankName)
+                    const accountActionMenu = accountActionMenuId === account.id ? (
+                      <div className="account-card-action-menu" role="menu" aria-label={`عملیات حساب ${account.name}`}>
+                        <button type="button" role="menuitem" onClick={() => openAccountEditForm(account)}>ویرایش</button>
+                        <button className="delete" type="button" role="menuitem" onClick={() => deleteAccount(account)}>حذف</button>
+                      </div>
+                    ) : null
+                    const accountActionTrigger = (
+                      <button
+                        className="account-card-action-trigger"
+                        type="button"
+                        aria-label={`عملیات حساب ${account.name}`}
+                        aria-expanded={accountActionMenuId === account.id}
+                        onClick={() => setAccountActionMenuId((current) => current === account.id ? null : account.id)}
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
+                    )
+                    const accountVisibilityToggle = (account.cardNumber || account.accountNumber || account.iban) ? (
+                      <button
+                        className="account-bank-card-visibility"
+                        type="button"
+                        aria-label={visibleAccountCardIds.has(account.id)
+                          ? 'پنهان کردن اطلاعات بانکی'
+                          : 'نمایش اطلاعات بانکی'}
+                        aria-pressed={visibleAccountCardIds.has(account.id)}
+                        onClick={() => setVisibleAccountCardIds((current) => {
+                          const next = new Set(current)
+                          if (next.has(account.id)) next.delete(account.id)
+                          else next.add(account.id)
+                          return next
+                        })}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          {visibleAccountCardIds.has(account.id) ? (
+                            <>
+                              <path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                              <path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.2 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.8 7 10 7a10.5 10.5 0 0 0 3-.4" />
+                            </>
+                          ) : (
+                            <>
+                              <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12Z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </>
+                          )}
+                        </svg>
+                      </button>
+                    ) : null
+                    const accountActionPressHandlers = {
+                      onContextMenu: (event: React.MouseEvent<HTMLElement>) => event.preventDefault(),
+                      onPointerDown: (event: ReactPointerEvent<HTMLElement>) => startAccountActionPress(event, account),
+                      onPointerMove: moveAccountActionPress,
+                      onPointerUp: clearAccountActionPress,
+                      onPointerCancel: clearAccountActionPress,
+                    }
 
                     return account.kind === 'بانکی' ? (
-                      <article className="account-card bank" key={account.id}>
+                      <article
+                        className="account-card bank"
+                        data-account-card={account.id}
+                        key={account.id}
+                        {...accountActionPressHandlers}
+                      >
                         <div className="account-bank-card-content">
                           <div className="account-bank-card-top">
                             <div className="account-bank-card-brand">
@@ -12339,7 +12554,11 @@ function App() {
                                 <span>حساب بانکی</span>
                               </div>
                             </div>
-                            <span className="account-bank-card-mark" aria-hidden="true">⋮</span>
+                            <div className="account-bank-card-actions">
+                              {accountActionTrigger}
+                              {accountVisibilityToggle}
+                              {accountActionMenu}
+                            </div>
                           </div>
 
                           {bank && (
@@ -12351,6 +12570,15 @@ function App() {
                             />
                           )}
 
+                          {account.iban && (
+                            <div className="account-bank-card-iban">
+                              <span>شماره شبا</span>
+                              <strong dir="ltr">{visibleAccountCardIds.has(account.id)
+                                ? account.iban.replace(/(.{4})(?=.)/g, '$1 ')
+                                : `IR •••• •••• •••• •••• •••• ${account.iban.slice(-4)}`}</strong>
+                            </div>
+                          )}
+
                           <div className="account-bank-card-number" dir="ltr">
                             <span className="account-bank-card-number-value">
                               {account.cardNumber
@@ -12359,42 +12587,21 @@ function App() {
                                   : `•••• •••• •••• ${account.cardNumber.slice(-4)}`
                                 : 'شماره کارت ثبت نشده'}
                             </span>
-                            {account.cardNumber && (
-                              <button
-                                className="account-bank-card-visibility"
-                                type="button"
-                                aria-label={visibleAccountCardIds.has(account.id)
-                                  ? 'پنهان کردن شماره کارت'
-                                  : 'نمایش شماره کارت'}
-                                aria-pressed={visibleAccountCardIds.has(account.id)}
-                                onClick={() => setVisibleAccountCardIds((current) => {
-                                  const next = new Set(current)
-                                  if (next.has(account.id)) next.delete(account.id)
-                                  else next.add(account.id)
-                                  return next
-                                })}
-                              >
-                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                  {visibleAccountCardIds.has(account.id) ? (
-                                    <>
-                                      <path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" />
-                                      <path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.2 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.8 7 10 7a10.5 10.5 0 0 0 3-.4" />
-                                    </>
-                                  ) : (
-                                    <>
-                                      <path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12Z" />
-                                      <circle cx="12" cy="12" r="3" />
-                                    </>
-                                  )}
-                                </svg>
-                              </button>
-                            )}
                           </div>
+
+                          {account.accountNumber && (
+                            <div className="account-bank-card-account-number" dir="rtl">
+                                <span>شماره حساب</span>
+                                <strong dir="ltr">{visibleAccountCardIds.has(account.id)
+                                  ? account.accountNumber.replace(/(.{4})(?=.)/g, '$1 ')
+                                  : `•••• ${account.accountNumber.slice(-4)}`}</strong>
+                            </div>
+                          )}
 
                           <div className="account-bank-card-bottom">
                             <div className="account-bank-card-detail">
-                              <span>نام صاحب حساب</span>
-                              <strong>{account.ownerName ?? account.name}</strong>
+                                <span>نام صاحب حساب</span>
+                                <strong>{account.ownerName ?? account.name}</strong>
                             </div>
                             <div className="account-bank-card-detail balance">
                               <span>موجودی</span>
@@ -12404,7 +12611,14 @@ function App() {
                         </div>
                       </article>
                     ) : (
-                      <article className="account-card cash" key={account.id}>
+                      <article
+                        className="account-card cash"
+                        data-account-card={account.id}
+                        key={account.id}
+                        {...accountActionPressHandlers}
+                      >
+                        {accountActionTrigger}
+                        {accountActionMenu}
                         <span className="account-card-icon cash" aria-hidden="true">▣</span>
                         <div className="account-card-details">
                           <span>صندوق</span>
@@ -12461,13 +12675,16 @@ function App() {
                   <header className="account-form-heading">
                     <div>
                       <span>مدیریت مالی <i aria-hidden="true">•</i> حساب‌ها</span>
-                      <h2 id="account-form-title">افزودن حساب جدید</h2>
+                      <h2 id="account-form-title">{editingAccountId ? 'ویرایش حساب' : 'افزودن حساب جدید'}</h2>
                       <p>مشخصات حساب صندوق یا بانکی را وارد کنید.</p>
                     </div>
                     <button
                       type="button"
                       aria-label="بستن پنجره"
-                      onClick={() => setAccountFormOpen(false)}
+                      onClick={() => {
+                        setAccountFormOpen(false)
+                        setEditingAccountId(null)
+                      }}
                     >
                       ×
                     </button>
@@ -12626,6 +12843,33 @@ function App() {
                             ))}
                           </div>
                         </fieldset>
+                        <label className="account-form-field">
+                          <span>شماره حساب <small>اختیاری</small></span>
+                          <input
+                            inputMode="numeric"
+                            maxLength={30}
+                            value={accountFormFields.accountNumber}
+                            onChange={(event) => setAccountFormFields((fields) => ({
+                              ...fields,
+                              accountNumber: normalizeAccountDigits(event.target.value).slice(0, 30),
+                            }))}
+                            placeholder="شماره حساب بانکی"
+                          />
+                        </label>
+                        <label className="account-form-field">
+                          <span>شماره شبا <small>اختیاری</small></span>
+                          <input
+                            dir="ltr"
+                            inputMode="text"
+                            maxLength={26}
+                            value={accountFormFields.iban}
+                            onChange={(event) => setAccountFormFields((fields) => ({
+                              ...fields,
+                              iban: normalizeAccountIban(event.target.value),
+                            }))}
+                            placeholder="IR و ۲۴ رقم"
+                          />
+                        </label>
                         {accountFormFields.bankName && !bankOptions.find(
                           (bank) => bank.name === accountFormFields.bankName,
                         )?.cardPrefixes.length && (
@@ -12682,8 +12926,11 @@ function App() {
                     )}
                     {accountFormError && <p className="account-form-error" role="alert">{accountFormError}</p>}
                     <footer className="account-form-actions">
-                      <button type="button" onClick={() => setAccountFormOpen(false)}>انصراف</button>
-                      <button type="submit">تأیید و افزودن حساب</button>
+                      <button type="button" onClick={() => {
+                        setAccountFormOpen(false)
+                        setEditingAccountId(null)
+                      }}>انصراف</button>
+                      <button type="submit">{editingAccountId ? 'ذخیرهٔ تغییرات' : 'تأیید و افزودن حساب'}</button>
                     </footer>
                   </form>
                 </section>
@@ -13563,13 +13810,15 @@ function App() {
 
             <section
               className="inventory-list-section"
-              aria-label={inventoryKind === 'خدمات' ? 'مدیریت فهرست خدمات' : 'مدیریت فهرست انبار'}
+              aria-label={inventoryKind === 'خدمات'
+                ? 'مدیریت فهرست خدمات'
+                : inventoryKind === 'تولید' ? 'مدیریت فهرست تولید' : 'مدیریت فهرست انبار'}
             >
               <div className="people-list-heading inventory-list-heading">
                 <div>
                   <h2>فهرست {inventoryKind}</h2>
                 </div>
-                <div className="inventory-warehouse-actions">
+                {inventoryKind === 'کالا' && <div className="inventory-warehouse-actions">
                   <button
                     className="inventory-warehouses-button"
                     type="button"
@@ -13602,13 +13851,13 @@ function App() {
                   >
                     +
                   </button>
-                </div>
+                </div>}
               </div>
-              {inventoryWarehousesOpen && (
-                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label={inventoryKind === 'خدمات' ? 'مدیریت انبارهای خدمات' : 'مدیریت انبارها'}>
+              {inventoryKind === 'کالا' && inventoryWarehousesOpen && (
+                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label="مدیریت انبارها">
                   <div className="inventory-warehouses-heading">
                     <div>
-                      <strong>{inventoryKind === 'خدمات' ? 'انتخاب انبار خدمات' : 'انتخاب انبار'}</strong>
+                      <strong>انتخاب انبار</strong>
                       <span>{formatPersonBalance(activeWarehouseOptions.length)} انبار ثبت‌شده</span>
                     </div>
                     <button
@@ -13632,7 +13881,7 @@ function App() {
                       <span
                         className="inventory-action-chip-wrap"
                         key={warehouse}
-                        onPointerDown={(event) => startInventoryActionPress(event, { type: 'warehouse', name: warehouse, ...(inventoryKind === 'خدمات' ? { kind: 'خدمات' as const } : {}) })}
+                        onPointerDown={(event) => startInventoryActionPress(event, { type: 'warehouse', name: warehouse })}
                         onPointerMove={moveInventoryActionPress}
                         onPointerUp={clearInventoryActionPressTimer}
                         onPointerCancel={clearInventoryActionPressTimer}
@@ -13647,8 +13896,7 @@ function App() {
                               event.preventDefault()
                               return
                             }
-                            if (inventoryKind === 'خدمات') setSelectedServiceWarehouse(warehouse)
-                            else setSelectedWarehouse(warehouse)
+                            setSelectedWarehouse(warehouse)
                             setInventoryGroup('همه')
                             setInventoryCategory('همه')
                             setInventorySearch('')
@@ -13658,13 +13906,13 @@ function App() {
                           <Icon name="shop" />
                           {warehouse}
                         </button>
-                        {warehouse !== (inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE) && (
+                        {warehouse !== DEFAULT_INVENTORY_WAREHOUSE && (
                           <button
                             className="inventory-action-trigger"
                             type="button"
                             aria-label={`گزینه‌های انبار ${warehouse}`}
                             title={`گزینه‌های انبار ${warehouse}`}
-                            onClick={(event) => activateInventoryActionItem(event, { type: 'warehouse', name: warehouse, ...(inventoryKind === 'خدمات' ? { kind: 'خدمات' as const } : {}) })}
+                            onClick={(event) => activateInventoryActionItem(event, { type: 'warehouse', name: warehouse })}
                           >
                             <span aria-hidden="true">⋮</span>
                           </button>
@@ -13674,14 +13922,12 @@ function App() {
                   </div>
                 </section>
               )}
-              {inventoryWarehouseFormOpen && (
-                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label={inventoryKind === 'خدمات' ? 'مدیریت انبار خدمات' : 'افزودن انبار'}>
+              {inventoryKind === 'کالا' && inventoryWarehouseFormOpen && (
+                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label="افزودن انبار">
                   <div className="inventory-warehouses-heading">
                     <div>
-                      <strong>{(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'ویرایش انبار' : 'افزودن انبار جدید'}</strong>
-                      <span>{inventoryKind === 'خدمات'
-                        ? 'این انبار فقط برای فهرست خدمات استفاده می‌شود.'
-                        : 'پس از افزودن، انبار جدید به‌صورت خودکار انتخاب می‌شود.'}</span>
+                      <strong>{editingInventoryWarehouse ? 'ویرایش انبار' : 'افزودن انبار جدید'}</strong>
+                      <span>پس از افزودن، انبار جدید به‌صورت خودکار انتخاب می‌شود.</span>
                     </div>
                     <button
                       type="button"
@@ -13705,11 +13951,11 @@ function App() {
                         setInventoryWarehouseInput(event.target.value)
                         setInventoryWarehouseError('')
                       }}
-                      placeholder={(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'نام جدید انبار' : 'نام انبار جدید'}
-                      aria-label={(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'نام جدید انبار' : 'نام انبار جدید'}
+                      placeholder={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
+                      aria-label={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
                       aria-invalid={Boolean(inventoryWarehouseError)}
                     />
-                    <button type="submit">{(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'ذخیره' : 'افزودن انبار'}</button>
+                    <button type="submit">{editingInventoryWarehouse ? 'ذخیره' : 'افزودن انبار'}</button>
                     <button className="inventory-warehouse-cancel" type="button" onClick={() => {
                       setInventoryWarehouseFormOpen(false)
                       setEditingInventoryWarehouse(null)
@@ -14207,7 +14453,9 @@ function App() {
                   >
                     <header className="inventory-detail-header">
                       <div>
-                        <span>{inventoryDetailItem.kind} · {inventoryDetailItem.warehouse ?? activeWarehouse}</span>
+                        <span>{inventoryDetailItem.kind === 'کالا'
+                          ? `${inventoryDetailItem.kind} · ${inventoryDetailItem.warehouse ?? activeWarehouse}`
+                          : inventoryDetailItem.kind}</span>
                         <h2 id="inventory-detail-title">{inventoryDetailItem.name}</h2>
                       </div>
                       <button

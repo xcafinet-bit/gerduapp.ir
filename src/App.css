@@ -2640,10 +2640,10 @@
   --people-add-glow-angle: 0deg;
   position: fixed;
   z-index: 6;
-  left: max(18px, calc((100vw - 760px) / 2 + 18px));
+  left: max(18px, calc((100vw - 720px) / 2 + 18px));
   bottom: calc(91px + env(safe-area-inset-bottom));
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -2652,7 +2652,7 @@
     radial-gradient(circle at 30% 20%, #ffffff38, transparent 48%),
     linear-gradient(145deg, var(--app-color-accent), var(--app-color-deep));
   border: 1px solid #ffffff50;
-  border-radius: 19px;
+  border-radius: 17px;
   box-shadow: 0 9px 22px #0f756546, 0 2px 6px #123e3c28, inset 0 1px #ffffff65;
   cursor: pointer;
   isolation: isolate;
@@ -2664,7 +2664,7 @@
   z-index: 0;
   inset: 2px;
   padding: 2px;
-  border-radius: 17px;
+  border-radius: 15px;
   background: conic-gradient(
     from var(--people-add-glow-angle),
     transparent 0 73%,
@@ -2699,8 +2699,8 @@
 .people-add-button svg {
   position: relative;
   z-index: 1;
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   overflow: visible;
   fill: none;
   stroke: currentColor;
@@ -5108,8 +5108,8 @@
 }
 
 .store-empty-icon {
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
   margin-bottom: 8px;
   border-radius: 18px;
 }
@@ -7283,7 +7283,7 @@ button:focus-visible {
   .people-hero {
     gap: 8px;
     padding: 14px 12px;
-    border-radius: 19px;
+    border-radius: 17px;
   }
 
   .people-hero-icon {
@@ -9743,15 +9743,15 @@ button:focus-visible {
   --people-add-glow: #ffe477;
   --people-add-glow-angle: 0deg;
   bottom: calc(91px + env(safe-area-inset-bottom));
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
   background:
     radial-gradient(circle at 30% 20%, #ffffff38, transparent 48%),
     linear-gradient(145deg, var(--app-color-accent), var(--app-color-deep));
   border: 1px solid #ffffff50;
-  border-radius: 19px;
+  border-radius: 17px;
   box-shadow: 0 9px 22px #0f756546, 0 2px 6px #123e3c28, inset 0 1px #ffffff65;
-  font-size: 34px;
+  font-size: 30px;
   isolation: isolate;
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
 }
@@ -9761,7 +9761,7 @@ button:focus-visible {
   z-index: 0;
   inset: 2px;
   padding: 2px;
-  border-radius: 17px;
+  border-radius: 15px;
   background: conic-gradient(
     from var(--people-add-glow-angle),
     transparent 0 73%,
@@ -19294,28 +19294,30 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 21px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, .1);
-  border: 1px solid rgba(255, 255, 255, .14);
-  border-radius: 17px;
+  margin-top: 12px;
+  padding: 11px 14px;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface, #fff);
+  border: 1px solid var(--app-color-border);
+  border-radius: 15px;
+  box-shadow: 0 5px 16px #102e3018;
 }
 
 .accounts-total > span {
-  color: rgba(255, 255, 255, .82);
+  color: var(--app-color-ink);
   font-size: 11px;
   font-weight: 700;
 }
 
 .accounts-total strong {
-  color: #fff;
-  font-size: 20px;
+  color: var(--app-color-accent);
+  font-size: 16px;
   font-weight: 850;
   white-space: nowrap;
 }
 
 .accounts-total small {
-  color: var(--app-color-light);
+  color: var(--app-color-accent);
   font-size: 10px;
 }
 
@@ -19514,6 +19516,73 @@ button:focus-visible {
   isolation: isolate;
 }
 
+.account-card.cash {
+  position: relative;
+}
+
+.account-card-action-trigger {
+  width: 30px;
+  height: 30px;
+  display: none;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--app-color-accent);
+  background: rgba(var(--app-color-accent-rgb), .08);
+  border: 1px solid var(--app-color-border);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account-card-action-menu {
+  position: absolute;
+  z-index: 4;
+  top: 48px;
+  right: 14px;
+  width: 150px;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface, #fff);
+  border: 1px solid var(--app-color-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px #102f3030;
+}
+
+.account-card-action-menu button {
+  min-height: 38px;
+  padding: 8px 10px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  text-align: right;
+  cursor: pointer;
+}
+
+.account-card-action-menu button:hover,
+.account-card-action-menu button:focus-visible {
+  background: var(--app-color-soft);
+  outline: 0;
+}
+
+.account-card-action-menu button.delete {
+  color: #b74444;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 1025px) {
+  .account-card-action-trigger {
+    display: grid;
+  }
+}
+
 .account-card.bank::before,
 .account-card.bank::after {
   position: absolute;
@@ -19544,7 +19613,7 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 15px;
+  gap: 9px;
   padding: 16px 18px 14px;
 }
 
@@ -19553,6 +19622,22 @@ button:focus-visible {
 .account-bank-card-bottom {
   display: flex;
   align-items: center;
+}
+
+.account-bank-card-actions {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  direction: ltr;
+}
+
+.account-bank-card-actions .account-card-action-menu {
+  top: calc(100% + 6px);
+  right: auto;
+  left: 0;
+  direction: rtl;
 }
 
 .account-bank-card-top,
@@ -19649,6 +19734,29 @@ button:focus-visible {
   font-size: 7px;
 }
 
+.account-bank-card-iban {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--app-color-deep);
+  font-size: 8px;
+  font-weight: 650;
+  opacity: .84;
+}
+
+.account-bank-card-iban strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--app-color-ink);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .account-bank-card-number {
   display: flex;
   align-items: center;
@@ -19668,6 +19776,28 @@ button:focus-visible {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.account-bank-card-account-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--app-color-deep);
+  font-size: 9px;
+  font-weight: 650;
+  opacity: .84;
+}
+
+.account-bank-card-account-number strong {
+  max-width: 70%;
+  overflow: hidden;
+  color: var(--app-color-ink);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account-bank-card-visibility {
@@ -19702,6 +19832,10 @@ button:focus-visible {
 }
 
 .account-bank-card-bottom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 10px 14px;
   padding-top: 11px;
   border-top: 1px solid var(--app-color-border);
 }
@@ -19768,11 +19902,13 @@ button:focus-visible {
 
 .app-frame[data-theme='dark'] .account-bank-card-title strong,
 .app-frame[data-theme='dark'] .account-bank-card-number,
+.app-frame[data-theme='dark'] .account-bank-card-account-number strong,
 .app-frame[data-theme='dark'] .account-bank-card-detail > strong {
   color: #fff;
 }
 
 .app-frame[data-theme='dark'] .account-bank-card-title > span,
+.app-frame[data-theme='dark'] .account-bank-card-account-number,
 .app-frame[data-theme='dark'] .account-bank-card-detail > span,
 .app-frame[data-theme='dark'] .account-bank-card-detail.balance small {
   color: rgba(255, 255, 255, .72);
@@ -19865,8 +20001,8 @@ button:focus-visible {
   z-index: 25;
   bottom: calc(91px + env(safe-area-inset-bottom));
   left: max(18px, calc((100vw - 720px) / 2 + 18px));
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -19875,10 +20011,10 @@ button:focus-visible {
     radial-gradient(circle at 30% 20%, #ffffff38, transparent 48%),
     linear-gradient(145deg, var(--app-color-accent), var(--app-color-deep));
   border: 1px solid #ffffff50;
-  border-radius: 19px;
+  border-radius: 17px;
   box-shadow: 0 9px 22px #0f756546, 0 2px 6px #123e3c28, inset 0 1px #ffffff65;
   font: inherit;
-  font-size: 34px;
+  font-size: 30px;
   isolation: isolate;
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
@@ -19889,7 +20025,7 @@ button:focus-visible {
   z-index: 0;
   inset: 2px;
   padding: 2px;
-  border-radius: 17px;
+  border-radius: 15px;
   background: conic-gradient(
     from var(--people-add-glow-angle, 0deg),
     transparent 0 73%,
