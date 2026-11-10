@@ -789,6 +789,7 @@ const SALES_INVOICES_STORAGE_KEY = 'trazino-sales-invoices-v1'
 const PURCHASE_INVOICES_STORAGE_KEY = 'trazino-purchase-invoices-v1'
 const MONEY_DOCUMENTS_STORAGE_KEY = 'trazino-money-documents-v1'
 const RECEIVED_CHECKS_STORAGE_KEY = 'trazino-received-checks-v1'
+const PAID_CHECKS_STORAGE_KEY = 'trazino-paid-checks-v1'
 const defaultSalesInvoiceSettings: SalesInvoiceSettings = {
   prefixCategoryName: false,
   enableItemDiscount: true,
@@ -810,7 +811,7 @@ type StoredPurchaseInvoices = {
 }
 
 type MoneyDocumentKind = 'دریافت' | 'پرداخت' | 'هزینه' | 'درآمد'
-type MoneyDocumentFormKind = MoneyDocumentKind | 'دریافت چک'
+type MoneyDocumentFormKind = MoneyDocumentKind | 'دریافت چک' | 'پرداخت چک'
 type MoneyDocument = {
   id: string
   number: string
@@ -833,7 +834,7 @@ type StoredMoneyDocuments = {
   error: string
 }
 
-type ReceivedCheck = {
+type CheckRecord = {
   id: string
   number: string
   personId: string
@@ -854,7 +855,12 @@ type ReceivedCheck = {
 }
 
 type StoredReceivedChecks = {
-  checks: ReceivedCheck[]
+  checks: CheckRecord[]
+  error: string
+}
+
+type StoredPaidChecks = {
+  checks: CheckRecord[]
   error: string
 }
 
@@ -1046,7 +1052,7 @@ function readStoredMoneyDocuments(storeId: number | null = null): StoredMoneyDoc
   }
 }
 
-function isReceivedCheck(value: unknown): value is ReceivedCheck {
+function isCheckRecord(value: unknown): value is CheckRecord {
   if (!value || typeof value !== 'object') return false
   const check = value as Record<string, unknown>
   return typeof check.id === 'string'
@@ -1076,7 +1082,7 @@ function readStoredReceivedChecks(storeId: number | null = null): StoredReceived
     const raw = readStoreData(RECEIVED_CHECKS_STORAGE_KEY, storeId)
     if (!raw) return { checks: [], error: '' }
     const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed) || !parsed.every(isReceivedCheck)) {
+    if (!Array.isArray(parsed) || !parsed.every(isCheckRecord)) {
       throw new Error('Invalid received checks')
     }
     return { checks: parsed, error: '' }
@@ -1084,6 +1090,23 @@ function readStoredReceivedChecks(storeId: number | null = null): StoredReceived
     return {
       checks: [],
       error: 'چک‌های دریافتی ذخیره‌شده قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
+    }
+  }
+}
+
+function readStoredPaidChecks(storeId: number | null = null): StoredPaidChecks {
+  try {
+    const raw = readStoreData(PAID_CHECKS_STORAGE_KEY, storeId)
+    if (!raw) return { checks: [], error: '' }
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.every(isCheckRecord)) {
+      throw new Error('Invalid paid checks')
+    }
+    return { checks: parsed, error: '' }
+  } catch {
+    return {
+      checks: [],
+      error: 'چک‌های پرداختی ذخیره‌شده قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
     }
   }
 }
@@ -1481,6 +1504,7 @@ const STORE_DATA_KEYS = [
   PURCHASE_INVOICES_STORAGE_KEY,
   MONEY_DOCUMENTS_STORAGE_KEY,
   RECEIVED_CHECKS_STORAGE_KEY,
+  PAID_CHECKS_STORAGE_KEY,
   INVENTORY_UNITS_STORAGE_KEY,
   INVENTORY_OPTIONS_STORAGE_KEY,
   INVENTORY_ITEMS_STORAGE_KEY,
@@ -1533,6 +1557,7 @@ function isAccountingBackup(value: unknown): value is AccountingBackup {
         || key === PURCHASE_INVOICES_STORAGE_KEY
         || key === MONEY_DOCUMENTS_STORAGE_KEY
         || key === RECEIVED_CHECKS_STORAGE_KEY
+        || key === PAID_CHECKS_STORAGE_KEY
       ) && raw === undefined) continue
       if (raw !== null && typeof raw !== 'string') return false
       if (typeof raw === 'string') {
@@ -1884,6 +1909,9 @@ function App() {
   )
   const [storedReceivedChecks, setStoredReceivedChecks] = useState<StoredReceivedChecks>(
     () => readStoredReceivedChecks(activeStoreId),
+  )
+  const [storedPaidChecks, setStoredPaidChecks] = useState<StoredPaidChecks>(
+    () => readStoredPaidChecks(activeStoreId),
   )
   const [moneyDocumentKind, setMoneyDocumentKind] = useState<MoneyDocumentFormKind | null>(null)
   const [moneyDocumentFields, setMoneyDocumentFields] = useState({
@@ -2953,6 +2981,7 @@ function App() {
     setStoredPurchaseInvoices(readStoredPurchaseInvoices(storeId))
     setStoredMoneyDocuments(readStoredMoneyDocuments(storeId))
     setStoredReceivedChecks(readStoredReceivedChecks(storeId))
+    setStoredPaidChecks(readStoredPaidChecks(storeId))
     setStoredInventoryUnits(readStoredInventoryUnits(storeId))
     setInventoryOptions(readStoredInventoryOptions(storeId))
     setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
@@ -3327,7 +3356,8 @@ function App() {
     setMoneyDocumentKind(kind)
     setMoneyDocumentCalendar('persian')
     setMoneyDocumentFields({
-      personId: kind === 'دریافت' || kind === 'پرداخت' || kind === 'دریافت چک'
+      personId: kind === 'دریافت' || kind === 'پرداخت'
+        || kind === 'دریافت چک' || kind === 'پرداخت چک'
         ? defaultPerson?.id ?? ''
         : '',
       accountId: storedAccounts.accounts[0]?.id ?? '',
@@ -3451,8 +3481,8 @@ function App() {
 
     try {
       if (!activeStoreId) throw new Error('برای ثبت سند ابتدا یک فروشگاه را انتخاب کنید.')
-      if (moneyDocumentKind === 'دریافت چک') {
-        if (storedReceivedChecks.error) throw new Error(storedReceivedChecks.error)
+      if (moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') {
+        const isReceivedCheck = moneyDocumentKind === 'دریافت چک'
         if (storedPeopleState.error) throw new Error(storedPeopleState.error)
         const person = storedPeopleState.people.find((item) => item.id === moneyDocumentFields.personId)
         if (!person) throw new Error('طرف حساب را انتخاب کنید.')
@@ -3484,10 +3514,12 @@ function App() {
           throw new Error('ساعت سند را به‌درستی وارد کنید.')
         }
 
-        const existingChecks = readStoredReceivedChecks(activeStoreId)
+        const existingChecks = isReceivedCheck
+          ? readStoredReceivedChecks(activeStoreId)
+          : readStoredPaidChecks(activeStoreId)
         if (existingChecks.error) throw new Error(existingChecks.error)
-        const check: ReceivedCheck = {
-          id: `received-check-${activeStoreId}-${Date.now()}`,
+        const check: CheckRecord = {
+          id: `${isReceivedCheck ? 'received' : 'paid'}-check-${activeStoreId}-${Date.now()}`,
           number: formatPersonCode(existingChecks.checks.length + 1),
           personId: person.id,
           personName: person.name,
@@ -3506,11 +3538,17 @@ function App() {
           createdAt: new Date().toISOString(),
         }
         const checks = [...existingChecks.checks, check]
-        const storageKey = getActiveStoreDataStorageKey(RECEIVED_CHECKS_STORAGE_KEY, activeStoreId)
+        const storageKey = getActiveStoreDataStorageKey(
+          isReceivedCheck ? RECEIVED_CHECKS_STORAGE_KEY : PAID_CHECKS_STORAGE_KEY,
+          activeStoreId,
+        )
         localStorage.setItem(storageKey, JSON.stringify(checks))
-        setStoredReceivedChecks({ checks, error: '' })
+        if (isReceivedCheck) setStoredReceivedChecks({ checks, error: '' })
+        else setStoredPaidChecks({ checks, error: '' })
         setMoneyDocumentKind(null)
-        setNotice(`چک دریافتی از ${person.name} ثبت شد.`)
+        setNotice(isReceivedCheck
+          ? `چک دریافتی از ${person.name} ثبت شد.`
+          : `چک پرداختی به ${person.name} ثبت شد.`)
         window.setTimeout(() => setNotice(''), 3000)
         return
       }
@@ -14122,7 +14160,9 @@ function App() {
                         ? openReturnPurchaseInvoice()
                       : item.label === 'دریافت چک'
                         ? openMoneyDocumentForm('دریافت چک')
-                      : isMoneyDocumentKind(item.label)
+                          : item.label === 'پرداخت چک'
+                            ? openMoneyDocumentForm('پرداخت چک')
+                          : isMoneyDocumentKind(item.label)
                       ? openMoneyDocumentForm(item.label)
                     : showComingSoon(item.label)}
               >
@@ -14203,6 +14243,8 @@ function App() {
               <p>سند شمارهٔ {formatPersonCode(
                 moneyDocumentKind === 'دریافت چک'
                   ? storedReceivedChecks.checks.length + 1
+                  : moneyDocumentKind === 'پرداخت چک'
+                    ? storedPaidChecks.checks.length + 1
                   : storedMoneyDocuments.documents.filter((item) => item.kind === moneyDocumentKind).length + 1,
               )}</p>
             </header>
@@ -14248,7 +14290,7 @@ function App() {
                 <div className="sales-invoice-receipt-tool-group secondary">
                   <button
                     type="button"
-                    aria-label={moneyDocumentKind === 'دریافت چک'
+                    aria-label={moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
                       ? moneyDocumentNoteOpen ? 'بستن یادداشت' : 'افزودن یادداشت'
                       : moneyDocumentNoteOpen ? 'بستن توضیحات' : 'افزودن توضیحات'}
                     aria-pressed={moneyDocumentNoteOpen}
@@ -14256,7 +14298,8 @@ function App() {
                     onClick={() => setMoneyDocumentNoteOpen((open) => !open)}
                   >
                     <span aria-hidden="true">▤</span>
-                    <span>{moneyDocumentKind === 'دریافت چک' ? 'یادداشت' : 'توضیحات'}</span>
+                    <span>{moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                      ? 'یادداشت' : 'توضیحات'}</span>
                   </button>
                   <button
                     type="button"
@@ -14289,15 +14332,18 @@ function App() {
               </div>
               <div className="sales-invoice-receipt-fields">
                 {(moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت'
-                  || moneyDocumentKind === 'دریافت چک') && (
+                  || moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon" aria-hidden="true">♙</span>
                     <span className="sales-invoice-receipt-field-label">
-                      {moneyDocumentKind === 'دریافت چک' ? 'طرف حساب:' : 'شخص:'}
+                      {moneyDocumentKind === 'دریافت چک'
+                        ? 'طرف حساب:'
+                        : moneyDocumentKind === 'پرداخت چک' ? 'پرداخت به:' : 'شخص:'}
                     </span>
                     <span className="sales-invoice-receipt-account-wrap">
                       <select
-                        aria-label={moneyDocumentKind === 'دریافت چک' ? 'طرف حساب چک' : 'شخص سند'}
+                        aria-label={moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                          ? 'طرف حساب چک' : 'شخص سند'}
                         value={moneyDocumentFields.personId}
                         onChange={(event) => setMoneyDocumentFields((fields) => ({
                           ...fields,
@@ -14330,7 +14376,7 @@ function App() {
                     </span>
                   </label>
                 )}
-                {moneyDocumentKind === 'دریافت چک' && (
+                {(moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
                   <>
                     <label className="sales-invoice-receipt-field">
                       <span className="sales-invoice-receipt-field-icon" aria-hidden="true">⌁</span>
@@ -14461,7 +14507,7 @@ function App() {
                     <small>ریال</small>
                   </span>
                 </label>
-                {moneyDocumentKind === 'دریافت چک' && (
+                {(moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
                     <span className="sales-invoice-receipt-field-label">بانک:</span>
@@ -14480,39 +14526,41 @@ function App() {
                     </span>
                   </label>
                 )}
-                {moneyDocumentKind !== 'دریافت چک' && <label className="sales-invoice-receipt-field">
-                  <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
-                  <span className="sales-invoice-receipt-field-label">
-                    {moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'درآمد' ? 'واریز به:' : 'برداشت از:'}
-                  </span>
-                  <span className="sales-invoice-receipt-account-wrap">
-                    <select
-                      aria-label="حساب سند"
-                      value={moneyDocumentFields.accountId}
-                      onChange={(event) => setMoneyDocumentFields((fields) => ({
-                        ...fields,
-                        accountId: event.target.value,
-                      }))}
-                      required
-                    >
-                      <option value="">انتخاب حساب</option>
-                      {storedAccounts.accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.kind === 'بانکی' ? account.bankName || account.name : account.name}
-                        </option>
-                      ))}
-                    </select>
-                    {storedAccounts.accounts.length === 0 && (
-                      <small className="sales-invoice-receipt-no-account">
-                        برای ثبت سند، ابتدا در بخش حساب‌ها یک حساب یا صندوق اضافه کنید.
-                      </small>
-                    )}
-                  </span>
-                </label>}
+                {moneyDocumentKind !== 'دریافت چک' && moneyDocumentKind !== 'پرداخت چک' && (
+                  <label className="sales-invoice-receipt-field">
+                    <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
+                    <span className="sales-invoice-receipt-field-label">
+                      {moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'درآمد' ? 'واریز به:' : 'برداشت از:'}
+                    </span>
+                    <span className="sales-invoice-receipt-account-wrap">
+                      <select
+                        aria-label="حساب سند"
+                        value={moneyDocumentFields.accountId}
+                        onChange={(event) => setMoneyDocumentFields((fields) => ({
+                          ...fields,
+                          accountId: event.target.value,
+                        }))}
+                        required
+                      >
+                        <option value="">انتخاب حساب</option>
+                        {storedAccounts.accounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.kind === 'بانکی' ? account.bankName || account.name : account.name}
+                          </option>
+                        ))}
+                      </select>
+                      {storedAccounts.accounts.length === 0 && (
+                        <small className="sales-invoice-receipt-no-account">
+                          برای ثبت سند، ابتدا در بخش حساب‌ها یک حساب یا صندوق اضافه کنید.
+                        </small>
+                      )}
+                    </span>
+                  </label>
+                )}
                 {moneyDocumentNoteOpen && (
                   <label className="sales-invoice-receipt-note">
-                    <span>{moneyDocumentKind === 'دریافت چک'
-                      ? 'یادداشت دریافت چک'
+                    <span>{moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                      ? `یادداشت ${moneyDocumentKind}`
                       : `توضیحات ${moneyDocumentKind}`}</span>
                     <textarea
                       maxLength={500}
@@ -14521,8 +14569,8 @@ function App() {
                         ...fields,
                         note: event.target.value,
                       }))}
-                      placeholder={moneyDocumentKind === 'دریافت چک'
-                        ? 'یادداشت دریافت چک...'
+                      placeholder={moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                        ? `یادداشت ${moneyDocumentKind}...`
                         : `توضیحات ${moneyDocumentKind}...`}
                       rows={2}
                     />
