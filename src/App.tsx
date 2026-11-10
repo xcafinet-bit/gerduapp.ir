@@ -2512,8 +2512,11 @@ function App() {
   const [inventoryStocktakeError, setInventoryStocktakeError] = useState('')
   const [inventoryStocktakeWarehousesOpen, setInventoryStocktakeWarehousesOpen] = useState(false)
   const [inventoryTransferOpen, setInventoryTransferOpen] = useState(false)
+  const [inventoryTransferSourceWarehouse, setInventoryTransferSourceWarehouse] = useState('')
   const [inventoryTransferWarehouse, setInventoryTransferWarehouse] = useState('')
   const [inventoryTransferItemId, setInventoryTransferItemId] = useState('')
+  const [inventoryTransferSearch, setInventoryTransferSearch] = useState('')
+  const [inventoryTransferProductPickerOpen, setInventoryTransferProductPickerOpen] = useState(false)
   const [inventoryTransferQuantity, setInventoryTransferQuantity] = useState('')
   const [inventoryTransferError, setInventoryTransferError] = useState('')
   const [inventoryShareOpen, setInventoryShareOpen] = useState(false)
@@ -2879,10 +2882,27 @@ function App() {
       || (item.code ?? '').toLocaleLowerCase().includes(query)
       || (item.barcode ?? '').toLocaleLowerCase().includes(query)
   })
-  const inventoryTransferWarehouses = inventoryKind === 'کالا'
-    ? inventoryOptions.warehouses.filter((warehouse) => warehouse !== activeWarehouse)
-    : []
-  const inventoryTransferItems = inventoryStocktakeRecords.filter((item) => item.kind === 'کالا')
+  const inventoryTransferAllWarehouses = [...new Set([
+    DEFAULT_INVENTORY_WAREHOUSE,
+    ...inventoryOptions.warehouses,
+  ])]
+  const inventoryTransferWarehouses = inventoryTransferAllWarehouses.filter(
+    (warehouse) => warehouse !== inventoryTransferSourceWarehouse,
+  )
+  const inventoryTransferSourceItems = storedInventoryRecords.items.filter((item) => (
+    item.kind === 'کالا'
+    && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === inventoryTransferSourceWarehouse
+  ))
+  const inventoryTransferSearchQuery = inventoryTransferSearch.trim().toLocaleLowerCase()
+  const inventoryTransferItems = inventoryTransferSourceItems.filter((item) => (
+    !inventoryTransferSearchQuery
+    || item.name.toLocaleLowerCase().includes(inventoryTransferSearchQuery)
+    || (item.code ?? '').toLocaleLowerCase().includes(inventoryTransferSearchQuery)
+    || (item.barcode ?? '').toLocaleLowerCase().includes(inventoryTransferSearchQuery)
+  ))
+  const inventoryTransferSelectedItem = inventoryTransferSourceItems.find(
+    (item) => item.id === inventoryTransferItemId,
+  )
   const inventoryStocktakeDifferences = inventoryStocktakeRecords.reduce((total, item) => {
     const count = parseStocktakeQuantity(
       inventoryStocktakeCounts[item.id] ?? formatStocktakeQuantity(item.stock),
@@ -6551,7 +6571,7 @@ function App() {
           onClick={() => setInventoryUnitMenu(inventoryUnitMenu === target ? null : target)}
         >
           <span>{value || (allowEmpty ? 'انتخاب واحد دوم' : 'انتخاب واحد')}</span>
-          <span className="inventory-unit-chevron" aria-hidden="true">⌄</span>
+          <span className="dropdown-chevron inventory-unit-chevron" aria-hidden="true">⌄</span>
         </button>
         <button
           className="inventory-unit-add"
@@ -7339,8 +7359,20 @@ function App() {
   }
 
   const openInventoryTransfer = () => {
-    setInventoryTransferWarehouse(inventoryTransferWarehouses[0] ?? '')
-    setInventoryTransferItemId(inventoryTransferItems[0]?.id ?? '')
+    const sourceWarehouse = inventoryTransferAllWarehouses.includes(activeWarehouse)
+      ? activeWarehouse
+      : inventoryTransferAllWarehouses[0] ?? ''
+    const sourceItems = storedInventoryRecords.items.filter((item) => (
+      item.kind === 'کالا'
+      && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === sourceWarehouse
+    ))
+    setInventoryTransferSourceWarehouse(sourceWarehouse)
+    setInventoryTransferWarehouse(
+      inventoryTransferAllWarehouses.find((warehouse) => warehouse !== sourceWarehouse) ?? '',
+    )
+    setInventoryTransferItemId(sourceItems[0]?.id ?? '')
+    setInventoryTransferSearch('')
+    setInventoryTransferProductPickerOpen(false)
     setInventoryTransferQuantity('')
     setInventoryTransferError('')
     setInventoryTransferOpen(true)
@@ -7349,7 +7381,14 @@ function App() {
   const saveInventoryTransfer = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const quantity = parseStocktakeQuantity(inventoryTransferQuantity)
-    if (!inventoryTransferWarehouse || !inventoryTransferWarehouses.includes(inventoryTransferWarehouse)) {
+    if (!inventoryTransferSourceWarehouse
+      || !inventoryTransferAllWarehouses.includes(inventoryTransferSourceWarehouse)) {
+      setInventoryTransferError('انبار مبدا را انتخاب کنید.')
+      return
+    }
+    if (!inventoryTransferWarehouse
+      || inventoryTransferWarehouse === inventoryTransferSourceWarehouse
+      || !inventoryTransferWarehouses.includes(inventoryTransferWarehouse)) {
       setInventoryTransferError('انبار مقصد را انتخاب کنید.')
       return
     }
@@ -7358,7 +7397,7 @@ function App() {
       return
     }
 
-    const sourceItem = inventoryTransferItems.find((item) => item.id === inventoryTransferItemId)
+    const sourceItem = inventoryTransferSourceItems.find((item) => item.id === inventoryTransferItemId)
     if (!sourceItem) {
       setInventoryTransferError('کالای موردنظر برای انتقال پیدا نشد.')
       return
@@ -9031,7 +9070,7 @@ function App() {
                       onClick={() => setAccountReportGroupPickerOpen(!accountReportGroupPickerOpen)}
                     >
                       <span>{accountReportGroup}</span>
-                      <span className="person-group-picker-chevron" aria-hidden="true">⌄</span>
+                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
                     </button>
                     {accountReportGroupPickerOpen && (
                       <div
@@ -9183,7 +9222,7 @@ function App() {
                       onClick={() => setAccountReportGroupPickerOpen(!accountReportGroupPickerOpen)}
                     >
                       <span>{accountReportGroup}</span>
-                      <span className="person-group-picker-chevron" aria-hidden="true">⌄</span>
+                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
                     </button>
                     {accountReportGroupPickerOpen && (
                       <div
@@ -9757,7 +9796,7 @@ function App() {
                                 salesInvoiceReceiptFields.calendar,
                               )}</strong>
                             </span>
-                            <span className="sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
                           </button>
                           <button
                             className="sales-invoice-receipt-time"
@@ -9773,7 +9812,7 @@ function App() {
                                   .replace(/\d/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)))}
                               </strong>
                             </span>
-                            <span className="sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
                           </button>
                         </div>
                         <div className="sales-invoice-receipt-tool-group secondary">
@@ -12657,7 +12696,21 @@ function App() {
               title="افزودن حساب"
               onClick={openAccountForm}
             >
-              <span aria-hidden="true">+</span>
+              <span className="accounts-add-icon accounts-add-icon-bank" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                  <path d="M3 9h18M7 15h4" />
+                </svg>
+              </span>
+              <span className="accounts-add-icon accounts-add-icon-cash" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="2.5" y="7" width="15" height="11" rx="1.8" />
+                  <path d="M5 9.5h.01M15 15.5h.01" />
+                  <circle cx="10" cy="12.5" r="2.4" />
+                  <circle cx="18" cy="7" r="3.5" />
+                  <path d="M18 5.2v3.6m1.1-2.7h-1.6a.9.9 0 1 0 0 1.8h1a.9.9 0 1 1 0 1.8h-1.6" />
+                </svg>
+              </span>
             </button>
             {accountFormOpen && (
               <div
@@ -12731,7 +12784,7 @@ function App() {
                                   : '▤'}
                               </span>
                               <span>{accountFormFields.bankName || 'بانک را انتخاب کنید'}</span>
-                              <span className="account-bank-chevron" aria-hidden="true">⌄</span>
+                              <span className="dropdown-chevron account-bank-chevron" aria-hidden="true">⌄</span>
                             </button>
                             {accountBankPickerOpen && (
                               <div className="account-bank-menu" id="account-bank-options">
@@ -13541,7 +13594,8 @@ function App() {
                       <button
                         className="inventory-stocktake-transfer-button"
                         type="button"
-                        disabled={inventoryTransferWarehouses.length === 0 || inventoryTransferItems.length === 0}
+                        disabled={inventoryTransferAllWarehouses.length < 2
+                          || !storedInventoryRecords.items.some((item) => item.kind === 'کالا')}
                         onClick={openInventoryTransfer}
                       >
                         <span aria-hidden="true">⇄</span>
@@ -13556,7 +13610,7 @@ function App() {
                         onClick={() => setInventoryStocktakeWarehousesOpen(!inventoryStocktakeWarehousesOpen)}
                       >
                         <span>{activeWarehouse}</span>
-                        <span aria-hidden="true">⌄</span>
+                        <span className="dropdown-chevron" aria-hidden="true">⌄</span>
                       </button>
                       {inventoryStocktakeWarehousesOpen && (
                         <div className="inventory-stocktake-warehouse-menu" role="group" aria-label="انتخاب انبار">
@@ -13723,18 +13777,29 @@ function App() {
                       </header>
                       <div className="inventory-transfer-fields">
                         <label>
-                          <span>کالا</span>
+                          <span>انبار مبدا</span>
                           <select
-                            value={inventoryTransferItemId}
+                            value={inventoryTransferSourceWarehouse}
                             onChange={(event) => {
-                              setInventoryTransferItemId(event.target.value)
+                              const sourceWarehouse = event.target.value
+                              const sourceItems = storedInventoryRecords.items.filter((item) => (
+                                item.kind === 'کالا'
+                                && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === sourceWarehouse
+                              ))
+                              setInventoryTransferSourceWarehouse(sourceWarehouse)
+                              setInventoryTransferItemId(sourceItems[0]?.id ?? '')
+                              if (inventoryTransferWarehouse === sourceWarehouse) {
+                                setInventoryTransferWarehouse(
+                                  inventoryTransferAllWarehouses.find((warehouse) => warehouse !== sourceWarehouse) ?? '',
+                                )
+                              }
+                              setInventoryTransferSearch('')
+                              setInventoryTransferProductPickerOpen(false)
                               setInventoryTransferError('')
                             }}
                           >
-                            {inventoryTransferItems.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name} — موجودی {formatStocktakeQuantity(item.stock)} {item.unit}
-                              </option>
+                            {inventoryTransferAllWarehouses.map((warehouse) => (
+                              <option key={warehouse} value={warehouse}>{warehouse}</option>
                             ))}
                           </select>
                         </label>
@@ -13752,6 +13817,93 @@ function App() {
                             ))}
                           </select>
                         </label>
+                        <div className="inventory-transfer-product-picker">
+                          <label id="inventory-transfer-product-label">کالا</label>
+                          <button
+                            className="inventory-transfer-product-trigger"
+                            type="button"
+                            aria-labelledby="inventory-transfer-product-label"
+                            aria-expanded={inventoryTransferProductPickerOpen}
+                            aria-controls="inventory-transfer-product-picker-panel"
+                            onClick={() => {
+                              setInventoryTransferProductPickerOpen((open) => !open)
+                              setInventoryTransferSearch('')
+                            }}
+                          >
+                            <span className="inventory-transfer-product-icon" aria-hidden="true">▦</span>
+                            <span className="inventory-transfer-product-info">
+                              <strong>
+                                {inventoryTransferSelectedItem?.name ?? 'انتخاب کالا برای انتقال'}
+                              </strong>
+                              <small>
+                                {inventoryTransferSelectedItem
+                                  ? `کد کالا: ${inventoryTransferSelectedItem.code || '—'} · موجودی ${formatStocktakeQuantity(inventoryTransferSelectedItem.stock)} ${inventoryTransferSelectedItem.unit}`
+                                  : 'برای جست‌وجو و انتخاب کالا بزنید'}
+                              </small>
+                            </span>
+                            <span className="dropdown-chevron inventory-transfer-product-chevron" aria-hidden="true">
+                              {inventoryTransferProductPickerOpen ? '⌃' : '⌄'}
+                            </span>
+                          </button>
+                          {inventoryTransferProductPickerOpen && (
+                            <div className="inventory-transfer-product-picker-panel" id="inventory-transfer-product-picker-panel">
+                              <div className="inventory-transfer-search">
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <circle cx="10.8" cy="10.8" r="6.8" />
+                                  <path d="m16 16 5 5" />
+                                </svg>
+                                <input
+                                  id="inventory-transfer-product-search"
+                                  type="search"
+                                  aria-label="جست‌وجوی کالا بر اساس نام یا کد"
+                                  aria-controls="inventory-transfer-product-list"
+                                  autoComplete="off"
+                                  placeholder="جست‌وجو بر اساس نام یا کد کالا"
+                                  value={inventoryTransferSearch}
+                                  onChange={(event) => setInventoryTransferSearch(event.target.value)}
+                                />
+                              </div>
+                              <div
+                                className="inventory-transfer-product-list"
+                                id="inventory-transfer-product-list"
+                                role="listbox"
+                                aria-label="کالاهای انبار مبدا"
+                              >
+                                {inventoryTransferItems.length ? inventoryTransferItems.map((item) => (
+                                  <button
+                                    className={`inventory-transfer-product-option${item.id === inventoryTransferItemId ? ' selected' : ''}`}
+                                    key={item.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={item.id === inventoryTransferItemId}
+                                    onClick={() => {
+                                      setInventoryTransferItemId(item.id)
+                                      setInventoryTransferProductPickerOpen(false)
+                                      setInventoryTransferSearch('')
+                                      setInventoryTransferError('')
+                                    }}
+                                  >
+                                    <span className="inventory-transfer-product-icon" aria-hidden="true">▦</span>
+                                    <span className="inventory-transfer-product-info">
+                                      <strong>{item.name}</strong>
+                                      <small>کد کالا: {item.code || '—'}</small>
+                                    </span>
+                                    <span className="inventory-transfer-product-stock">
+                                      <strong>{formatStocktakeQuantity(item.stock)}</strong>
+                                      <small>{item.unit}</small>
+                                    </span>
+                                  </button>
+                                )) : (
+                                  <p className="inventory-transfer-no-products" aria-live="polite">
+                                    {inventoryTransferSearchQuery
+                                      ? 'کالایی با این نام یا کد پیدا نشد.'
+                                      : 'در این انبار کالایی برای انتقال وجود ندارد.'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         <label>
                           <span>مقدار انتقال</span>
                           <input
@@ -13763,7 +13915,7 @@ function App() {
                               setInventoryTransferError('')
                             }}
                             placeholder={`حداکثر ${formatStocktakeQuantity(
-                              inventoryTransferItems.find((item) => item.id === inventoryTransferItemId)?.stock ?? 0,
+                              inventoryTransferSourceItems.find((item) => item.id === inventoryTransferItemId)?.stock ?? 0,
                             )}`}
                           />
                         </label>
@@ -13771,7 +13923,7 @@ function App() {
                       {inventoryTransferError && <p role="alert">{inventoryTransferError}</p>}
                       <div className="inventory-transfer-actions">
                         <button type="button" onClick={() => setInventoryTransferOpen(false)}>انصراف</button>
-                        <button type="submit" disabled={!inventoryTransferItems.length || !inventoryTransferWarehouses.length}>
+                        <button type="submit" disabled={!inventoryTransferSourceItems.length || !inventoryTransferWarehouses.length}>
                           تأیید انتقال
                         </button>
                       </div>
@@ -13832,7 +13984,7 @@ function App() {
                   >
                     <Icon name="shop" />
                     <span>{activeWarehouse}</span>
-                    <span className="inventory-warehouses-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron inventory-warehouses-chevron" aria-hidden="true">⌄</span>
                   </button>
                   <button
                     className="inventory-warehouse-add"
@@ -15525,7 +15677,7 @@ function App() {
                                 <span className={personFormFields.group ? '' : 'placeholder'}>
                                   {personFormFields.group || (peopleGroupState.groups.length > 0 ? 'انتخاب گروه' : 'بدون گروه')}
                                 </span>
-                                <span className="person-group-picker-chevron" aria-hidden="true">⌄</span>
+                                <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
                               </button>
                               {personGroupPickerOpen && (
                                 <div
@@ -16086,7 +16238,7 @@ function App() {
                         moneyDocumentCalendar,
                       )}</strong>
                     </span>
-                    <span className="sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
                   </button>
                   <button
                     className="sales-invoice-receipt-time"
@@ -16101,7 +16253,7 @@ function App() {
                         String.fromCharCode(0x06f0 + Number(digit))
                       ))}</strong>
                     </span>
-                    <span className="sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
                   </button>
                 </div>
                 <div className="sales-invoice-receipt-tool-group secondary">
