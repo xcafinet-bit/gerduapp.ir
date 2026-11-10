@@ -3411,19 +3411,41 @@
   width: 112px;
   flex: 0 0 auto;
   display: grid;
-  justify-items: start;
-  gap: 7px;
+  justify-items: stretch;
+  gap: 5px;
+}
+
+.inventory-price-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  direction: rtl;
+}
+
+.inventory-price-label {
+  width: 32px;
+  flex: 0 0 32px;
+  color: #78868b;
+  font-size: 9px;
+  font-weight: 750;
+  text-align: right;
 }
 
 .inventory-price-tag {
+  width: 0;
+  flex: 1 1 0;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
+  box-sizing: border-box;
   padding: 4px 7px;
   border: 1px solid;
   border-radius: 999px;
   font-size: 9px;
   font-weight: 750;
   text-overflow: ellipsis;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -3524,11 +3546,15 @@
   }
 
   .inventory-item-prices {
-    width: 88px;
+    width: 124px;
   }
 
   .inventory-price-tag {
     padding: 4px 5px;
+    font-size: 8px;
+  }
+
+  .inventory-price-label {
     font-size: 8px;
   }
 
@@ -6326,6 +6352,7 @@ button:focus-visible {
 
 .app-frame[data-theme='dark'] .inventory-item-copy p,
 .app-frame[data-theme='dark'] .inventory-item-copy > span,
+.app-frame[data-theme='dark'] .inventory-item-code,
 .app-frame[data-theme='dark'] .inventory-empty {
   color: #9aadb2;
 }
@@ -6342,6 +6369,44 @@ button:focus-visible {
 
 .app-frame[data-theme='dark'] .inventory-add-button {
   border-color: var(--app-color-surface-raised);
+}
+
+.inventory-item-menu-trigger {
+  display: none;
+}
+
+.inventory-item {
+  touch-action: pan-y;
+}
+
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  .inventory-item-menu-trigger {
+    position: static;
+    top: auto;
+    left: auto;
+    width: 28px;
+    height: 34px;
+    flex: 0 0 28px;
+    display: grid;
+    order: 4;
+    place-items: center;
+    padding: 0;
+    color: var(--app-color-ink);
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 20px;
+    transform: none;
+    cursor: pointer;
+  }
+
+  .inventory-item-menu-trigger:hover,
+  .inventory-item-menu-trigger:focus-visible {
+    color: var(--app-color-accent);
+    background: var(--app-color-tint);
+    outline: 0;
+  }
 }
 
 @media (max-width: 680px) {
@@ -8635,6 +8700,13 @@ button:focus-visible {
   font-size: 12px;
 }
 
+.inventory-item-code {
+  display: block;
+  margin-top: 3px;
+  color: #788b91;
+  font-size: 9px;
+}
+
 .inventory-item-copy p {
   margin-top: 3px;
   color: #788b91;
@@ -8653,8 +8725,7 @@ button:focus-visible {
 
 .inventory-item-prices {
   order: 3;
-  width: 112px;
-  justify-items: end;
+  width: 132px;
 }
 
 .inventory-price-tag {
@@ -8982,7 +9053,7 @@ button:focus-visible {
   }
 
   .inventory-item-prices {
-    width: 92px;
+    width: 122px;
   }
 
   .inventory-price-tag {

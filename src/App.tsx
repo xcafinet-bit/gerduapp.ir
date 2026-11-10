@@ -1157,6 +1157,7 @@ const inventoryKinds: InventoryKind[] = ['کالا', 'خدمات', 'تولید']
 
 type InventoryRecord = {
   id: string
+  catalogId?: string
   warehouse?: string
   code?: string
   name: string
@@ -1291,6 +1292,7 @@ type InventoryActionTarget =
   | { type: 'warehouse'; name: string }
   | { type: 'group'; name: string; kind: InventoryKind }
   | { type: 'category'; name: string; group: string }
+  | { type: 'product'; name: string; id: string }
 
 type InventoryActionItem = InventoryActionTarget & { x: number; y: number }
 
@@ -1720,6 +1722,7 @@ function isInventoryRecord(value: unknown): value is InventoryRecord {
   if (!value || typeof value !== 'object') return false
   const item = value as Record<string, unknown>
   return typeof item.id === 'string'
+    && (item.catalogId === undefined || typeof item.catalogId === 'string')
     && (item.warehouse === undefined || typeof item.warehouse === 'string')
     && (item.code === undefined || typeof item.code === 'string')
     && typeof item.name === 'string'
@@ -1743,6 +1746,100 @@ function isInventoryRecord(value: unknown): value is InventoryRecord {
       || (typeof item.conversionRatio === 'number' && Number.isFinite(item.conversionRatio)))
 }
 
+function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: string[]) {
+  const allWarehouses = [...new Set([DEFAULT_INVENTORY_WAREHOUSE, ...warehouses])]
+  const centralByIdentity = new Map<string, InventoryRecord[]>()
+  const getIdentity = (item: InventoryRecord) => [
+    item.kind,
+    item.code?.trim() ?? '',
+    item.name.trim().toLocaleLowerCase(),
+    item.brand.trim().toLocaleLowerCase(),
+    item.unit.trim().toLocaleLowerCase(),
+  ].join('\u0000')
+  for (const item of items) {
+    if ((item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) !== DEFAULT_INVENTORY_WAREHOUSE) continue
+    const key = getIdentity(item)
+    centralByIdentity.set(key, [...(centralByIdentity.get(key) ?? []), item])
+  }
+
+  const catalogRecords = items.map((item) => {
+    const warehouse = item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE
+    const matches = item.catalogId || warehouse === DEFAULT_INVENTORY_WAREHOUSE
+      ? []
+      : centralByIdentity.get(getIdentity(item)) ?? []
+    const centralMatch = matches.length === 1 ? matches[0] : undefined
+    return {
+      ...item,
+      catalogId: item.catalogId ?? centralMatch?.catalogId ?? centralMatch?.id ?? item.id,
+      warehouse,
+    }
+  })
+  const canonicalByCatalog = new Map<string, InventoryRecord>()
+  for (const item of catalogRecords) {
+    const catalogId = item.catalogId ?? item.id
+    const current = canonicalByCatalog.get(catalogId)
+    if (!current
+      || (item.warehouse === DEFAULT_INVENTORY_WAREHOUSE && current.warehouse !== DEFAULT_INVENTORY_WAREHOUSE)) {
+      canonicalByCatalog.set(catalogId, item)
+    }
+  }
+
+  const normalized = catalogRecords.map((item) => {
+    const canonical = canonicalByCatalog.get(item.catalogId ?? item.id) ?? item
+    return {
+      ...item,
+      ...canonical,
+      id: item.id,
+      catalogId: item.catalogId ?? item.id,
+      warehouse: item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE,
+      stock: item.stock,
+      lastMovementAt: item.lastMovementAt,
+    }
+  })
+  const existingCatalogWarehouses = new Set(
+    normalized.map((item) => `${item.catalogId ?? item.id}\u0000${item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE}`),
+  )
+  const existingIds = new Set(normalized.map((item) => item.id))
+
+  for (const [catalogId, canonical] of canonicalByCatalog) {
+    for (const warehouse of allWarehouses) {
+      const key = `${catalogId}\u0000${warehouse}`
+      if (existingCatalogWarehouses.has(key)) continue
+      let id = `${canonical.id}::${encodeURIComponent(warehouse)}`
+      let suffix = 1
+      while (existingIds.has(id)) {
+        id = `${canonical.id}::${encodeURIComponent(warehouse)}:${suffix}`
+        suffix += 1
+      }
+      normalized.push({
+        ...canonical,
+        id,
+        catalogId,
+        warehouse,
+        stock: 0,
+        lastMovementAt: canonical.createdAt,
+      })
+      existingCatalogWarehouses.add(key)
+      existingIds.add(id)
+    }
+  }
+
+  return normalized
+}
+
+function updateInventoryCatalogPrices(
+  items: InventoryRecord[],
+  itemId: string,
+  prices: Partial<Pick<InventoryRecord, 'purchasePrice' | 'salePrice'>>,
+) {
+  const selectedItem = items.find((item) => item.id === itemId)
+  if (!selectedItem) return items
+  const catalogId = selectedItem.catalogId ?? selectedItem.id
+  return items.map((item) => (item.catalogId ?? item.id) === catalogId
+    ? { ...item, ...prices }
+    : item)
+}
+
 function readStoredInventoryRecords(storeId: number | null = null): StoredInventoryRecords {
   try {
     const raw = readStoreData(INVENTORY_ITEMS_STORAGE_KEY, storeId)
@@ -1751,7 +1848,21 @@ function readStoredInventoryRecords(storeId: number | null = null): StoredInvent
     if (!Array.isArray(parsed) || !parsed.every(isInventoryRecord)) {
       throw new Error('Invalid inventory records')
     }
-    return { items: parsed, error: '' }
+    const items = synchronizeInventoryCatalog(parsed, readStoredInventoryOptions(storeId).warehouses)
+    if (JSON.stringify(items) !== JSON.stringify(parsed)) {
+      try {
+        localStorage.setItem(
+          getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, storeId),
+          JSON.stringify(items),
+        )
+      } catch {
+        return {
+          items: parsed,
+          error: 'همگام‌سازی فهرست کالاها با انبارها انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
+        }
+      }
+    }
+    return { items, error: '' }
   } catch {
     return {
       items: [],
@@ -1799,27 +1910,37 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
       ])]
     }
 
-    const warehouseTaxonomies: Record<string, InventoryTaxonomy> = {
-      ...(parsed.warehouseTaxonomies ?? {}),
-      [DEFAULT_INVENTORY_WAREHOUSE]: {
-        groupsByKind,
-        categoriesByGroup,
-      },
+    const warehouses = [...new Set([
+      ...defaultWarehouses,
+      ...('warehouses' in parsed && Array.isArray(parsed.warehouses)
+        ? parsed.warehouses
+          .map((warehouse) => warehouse.trim())
+          .filter(Boolean)
+          .map((warehouse) => warehouse === 'انبار اصلی' ? DEFAULT_INVENTORY_WAREHOUSE : warehouse)
+        : []),
+    ])]
+    for (const taxonomy of Object.values(parsed.warehouseTaxonomies ?? {})) {
+      for (const kind of inventoryKinds) {
+        groupsByKind[kind] = [...new Set([
+          ...groupsByKind[kind],
+          ...taxonomy.groupsByKind[kind],
+        ])]
+      }
+      for (const [group, categories] of Object.entries(taxonomy.categoriesByGroup)) {
+        categoriesByGroup[group] = [...new Set([
+          ...(categoriesByGroup[group] ?? []),
+          ...categories,
+        ])]
+      }
     }
 
+    const sharedTaxonomy = { groupsByKind, categoriesByGroup }
     return {
-      groupsByKind,
-      categoriesByGroup,
-      warehouses: [...new Set([
-        ...defaultWarehouses,
-        ...('warehouses' in parsed && Array.isArray(parsed.warehouses)
-          ? parsed.warehouses
-            .map((warehouse) => warehouse.trim())
-            .filter(Boolean)
-            .map((warehouse) => warehouse === 'انبار اصلی' ? DEFAULT_INVENTORY_WAREHOUSE : warehouse)
-          : []),
-      ])],
-      warehouseTaxonomies,
+      ...sharedTaxonomy,
+      warehouses,
+      warehouseTaxonomies: Object.fromEntries(
+        warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
+      ),
     }
   } catch {
     return {
@@ -1875,6 +1996,19 @@ function normalizeAccountDigits(value: string) {
 function formatAccountBalanceInput(value: string) {
   return normalizeAccountDigits(value)
     .replace(/\B(?=(\d{3})+(?!\d))/g, '٬')
+    .replace(/\d/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)))
+}
+
+function formatDecimalInput(value: string) {
+  const normalized = value.replace(/[۰-۹٠-٩]/g, (digit) => {
+    const code = digit.charCodeAt(0)
+    return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660)
+  }).replace(/[٬\s]/g, '')
+  const separatorIndex = normalized.search(/[.,]/)
+  const integer = separatorIndex === -1 ? normalized : normalized.slice(0, separatorIndex)
+  const fraction = separatorIndex === -1 ? '' : normalized.slice(separatorIndex + 1).replace(/[.,]/g, '')
+  const separator = separatorIndex === -1 ? '' : normalized[separatorIndex]
+  return `${integer.replace(/\B(?=(\d{3})+(?!\d))/g, '٬')}${separator}${fraction}`
     .replace(/\d/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)))
 }
 
@@ -2088,6 +2222,7 @@ function App() {
   const [selectedWarehouse, setSelectedWarehouse] = useState(DEFAULT_INVENTORY_WAREHOUSE)
   const [storedInventoryRecords, setStoredInventoryRecords] = useState(() => readStoredInventoryRecords(activeStoreId))
   const [inventoryProductOpen, setInventoryProductOpen] = useState(false)
+  const [editingInventoryProductId, setEditingInventoryProductId] = useState<string | null>(null)
   const [inventoryProductTab, setInventoryProductTab] = useState<'basic' | 'extra'>('basic')
   const [inventoryProductFields, setInventoryProductFields] = useState(emptyInventoryProductForm)
   const [inventoryProductError, setInventoryProductError] = useState('')
@@ -2381,12 +2516,11 @@ function App() {
   const activeWarehouse = inventoryOptions.warehouses.includes(selectedWarehouse)
     ? selectedWarehouse
     : inventoryOptions.warehouses[0] ?? DEFAULT_INVENTORY_WAREHOUSE
-  const activeWarehouseTaxonomy = inventoryOptions.warehouseTaxonomies?.[activeWarehouse] ?? {
-    groupsByKind: { کالا: [], خدمات: [], تولید: [] },
-    categoriesByGroup: {},
-  }
+  const activeWarehouseTaxonomy: InventoryTaxonomy = inventoryOptions
   const inventoryGroups = activeWarehouseTaxonomy.groupsByKind[inventoryKind]
-  const inventoryItems = storedInventoryRecords.items
+  const inventoryItems = storedInventoryRecords.items.filter(
+    (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
+  )
   const salesInvoiceEditingInvoice = salesInvoiceEditingId
     ? storedSalesInvoices.invoices.find((invoice) => invoice.id === salesInvoiceEditingId) ?? null
     : null
@@ -2483,7 +2617,6 @@ function App() {
     ? [...new Set(Object.values(activeWarehouseTaxonomy.categoriesByGroup).flat())]
     : activeWarehouseTaxonomy.categoriesByGroup[inventoryGroup] ?? []
   const filteredInventory = inventoryItems
-    .filter((item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse)
     .filter((item) => item.kind === inventoryKind)
     .filter((item) => !inventoryNoStockOnly || item.stock <= 0)
     .filter((item) => inventoryGroup === 'همه' || item.group === inventoryGroup)
@@ -2505,7 +2638,6 @@ function App() {
     ? [...new Set(inventoryShareGroups.flatMap((group) => inventoryOptions.categoriesByGroup[group] ?? []))]
     : inventoryOptions.categoriesByGroup[inventoryShareSetting.group] ?? []
   const inventoryShareItems = inventoryItems
-    .filter((item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse)
     .filter((item) => inventoryShareSetting.scope === 'all' || item.kind === inventoryShareSetting.kind)
     .filter((item) => inventoryShareSetting.scope !== 'group' || inventoryShareSetting.group === 'همه' || item.group === inventoryShareSetting.group)
     .filter((item) => !inventoryShareSetting.categoryEnabled || inventoryShareSetting.category === 'همه' || item.category === inventoryShareSetting.category)
@@ -4917,7 +5049,7 @@ function App() {
           lastMovementAt: nowIso,
         })
       }
-      const updatedInventory = [
+      const updatedInventoryRows = [
         ...storedInventoryRecords.items.filter((item) => !updatedItemById.has(item.id)),
         ...storedInventoryRecords.items
           .filter((item) => updatedItemById.has(item.id))
@@ -4926,6 +5058,10 @@ function App() {
           !storedInventoryRecords.items.some((storedItem) => storedItem.id === item.id)
         )),
       ]
+      const updatedInventory = [...updatedItemById.values()].reduce(
+        (items, item) => updateInventoryCatalogPrices(items, item.id, { purchasePrice: item.purchasePrice }),
+        updatedInventoryRows,
+      )
 
       const attachment = salesInvoiceAttachment
         ? await new Promise<{ name: string; type: string; dataUrl: string }>((resolve, reject) => {
@@ -5448,9 +5584,14 @@ function App() {
         ...salesInvoiceDraftItem,
         salePrice: salesInvoiceDraftPrice,
       }
-      const updatedItems = storedInventoryRecords.items.some((item) => item.id === updatedItem.id)
+      const updatedInventoryRows = storedInventoryRecords.items.some((item) => item.id === updatedItem.id)
         ? storedInventoryRecords.items.map((item) => item.id === updatedItem.id ? updatedItem : item)
         : [...storedInventoryRecords.items, updatedItem]
+      const updatedItems = updateInventoryCatalogPrices(
+        updatedInventoryRows,
+        updatedItem.id,
+        { salePrice: updatedItem.salePrice },
+      )
       try {
         localStorage.setItem(
           getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId),
@@ -5923,6 +6064,7 @@ function App() {
     const nextCode = Math.max(0, ...inventoryItems.map((item, index) => (
       parsePersonCode(item.code ?? String(index + 1))
     ))) + 1
+    setEditingInventoryProductId(null)
     setInventoryProductFields({
       ...emptyInventoryProductForm,
       code: formatPersonCode(nextCode),
@@ -5958,6 +6100,7 @@ function App() {
           const code = digit.charCodeAt(0)
           return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660)
         })
+        .replace(/[٬\s]/g, '')
         .replace(',', '.'))
       : undefined
     if (stock === null || purchasePrice === null || salePrice === null) {
@@ -5969,45 +6112,71 @@ function App() {
       return
     }
 
+    const editedItem = editingInventoryProductId
+      ? inventoryItems.find((item) => item.id === editingInventoryProductId)
+      : undefined
     const selectedGroup = inventoryGroup !== 'همه'
       ? inventoryGroup
-      : inventoryGroups[0] ?? 'بدون گروه'
+      : editedItem?.group ?? inventoryGroups[0] ?? 'بدون گروه'
     const selectedCategory = inventoryCategory !== 'همه'
       ? inventoryCategory
-      : activeWarehouseTaxonomy.categoriesByGroup[selectedGroup]?.[0] ?? 'بدون دسته‌بندی'
-    const createdAt = new Date().toISOString()
-    const item: InventoryRecord = {
-      id: `item-${Date.now()}`,
-      code: inventoryProductFields.code,
-      name: inventoryProductFields.name.trim(),
-      createdAt,
-      lastMovementAt: createdAt,
-      group: selectedGroup,
-      category: selectedCategory,
-      kind: 'کالا',
-      brand: inventoryProductFields.brand.trim() || '—',
-      unit: inventoryProductFields.unit.trim(),
-      stock,
-      purchasePrice,
-      salePrice,
-      warehouse: activeWarehouse,
-      barcode: inventoryProductFields.barcode.trim(),
-      secondaryUnit: inventoryProductFields.secondaryUnit.trim(),
-      conversionRatio,
-    }
+      : editedItem?.group === selectedGroup
+        ? editedItem.category
+        : activeWarehouseTaxonomy.categoriesByGroup[selectedGroup]?.[0] ?? 'بدون دسته‌بندی'
     if (storedInventoryRecords.error) {
       setInventoryProductError(storedInventoryRecords.error)
       return
     }
-    const items = [...storedInventoryRecords.items, item]
+    const now = new Date().toISOString()
+    if (editingInventoryProductId && !editedItem) {
+      setInventoryProductError('کالای موردنظر برای ویرایش پیدا نشد.')
+      return
+    }
+    const sharedFields: Pick<InventoryRecord,
+      'code' | 'name' | 'group' | 'category' | 'brand' | 'unit' | 'purchasePrice' | 'salePrice' |
+      'barcode' | 'secondaryUnit' | 'conversionRatio'
+    > = {
+      code: inventoryProductFields.code,
+      name: inventoryProductFields.name.trim(),
+      group: selectedGroup,
+      category: selectedCategory,
+      brand: inventoryProductFields.brand.trim() || '—',
+      unit: inventoryProductFields.unit.trim(),
+      purchasePrice,
+      salePrice,
+      barcode: inventoryProductFields.barcode.trim(),
+      secondaryUnit: inventoryProductFields.secondaryUnit.trim(),
+      conversionRatio,
+    }
+    const nextRecords = editedItem
+      ? storedInventoryRecords.items.map((item) =>
+          (item.catalogId ?? item.id) === (editedItem.catalogId ?? editedItem.id)
+            ? {
+                ...item,
+                ...sharedFields,
+                stock: item.id === editedItem.id ? stock : item.stock,
+              }
+            : item)
+      : (() => {
+          const catalogId = `item-${Date.now()}`
+          const item: InventoryRecord = {
+            id: catalogId,
+            catalogId,
+            ...sharedFields,
+            createdAt: now,
+            lastMovementAt: now,
+            kind: 'کالا',
+            stock,
+            warehouse: activeWarehouse,
+          }
+          return [...storedInventoryRecords.items, item]
+        })()
+    const items = synchronizeInventoryCatalog(nextRecords, inventoryOptions.warehouses)
     try {
-      localStorage.setItem(
-        getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId),
-        JSON.stringify(items),
-      )
-      setStoredInventoryRecords({ items, error: '' })
+      persistInventoryChanges(inventoryOptions, items)
       setInventoryProductOpen(false)
-      setNotice('کالای جدید به فهرست اضافه شد.')
+      setEditingInventoryProductId(null)
+      setNotice(editedItem ? 'تغییرات کالا ذخیره شد.' : 'کالای جدید به فهرست اضافه شد.')
       window.setTimeout(() => setNotice(''), 2600)
     } catch {
       setInventoryProductError('ذخیرهٔ کالا انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
@@ -6054,8 +6223,10 @@ function App() {
       ? inventoryCategory
       : activeWarehouseTaxonomy.categoriesByGroup[selectedGroup]?.[0] ?? 'بدون دسته‌بندی'
     const createdAt = new Date().toISOString()
+    const catalogId = `item-${Date.now()}`
     const item: InventoryRecord = {
-      id: `item-${Date.now()}`,
+      id: catalogId,
+      catalogId,
       code: inventoryServiceFields.code,
       name: description,
       createdAt,
@@ -6070,7 +6241,10 @@ function App() {
       salePrice: price,
       warehouse: activeWarehouse,
     }
-    const items = [...storedInventoryRecords.items, item]
+    const items = synchronizeInventoryCatalog(
+      [...storedInventoryRecords.items, item],
+      inventoryOptions.warehouses,
+    )
     try {
       localStorage.setItem(
         getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId),
@@ -6528,28 +6702,26 @@ function App() {
       }
       categoriesByGroup[value] = [...new Set([...(categoriesByGroup[value] ?? []), ...existingCategories])]
       nextTaxonomy = {
-          ...activeWarehouseTaxonomy,
-          groupsByKind,
-          categoriesByGroup,
-        }
+        ...activeWarehouseTaxonomy,
+        groupsByKind,
+        categoriesByGroup,
+      }
       nextItems = storedInventoryRecords.items.map((item) =>
-        (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
-        && item.kind === edit.kind
+        item.kind === edit.kind
         && item.group === edit.name
           ? { ...item, group: value }
           : item)
     } else if (edit?.type === 'category') {
       nextTaxonomy = {
-          ...activeWarehouseTaxonomy,
-          categoriesByGroup: {
-            ...activeWarehouseTaxonomy.categoriesByGroup,
-            [edit.group]: (activeWarehouseTaxonomy.categoriesByGroup[edit.group] ?? []).map((category) =>
-              category === edit.name ? value : category),
-          },
+        ...activeWarehouseTaxonomy,
+        categoriesByGroup: {
+          ...activeWarehouseTaxonomy.categoriesByGroup,
+          [edit.group]: (activeWarehouseTaxonomy.categoriesByGroup[edit.group] ?? []).map((category) =>
+            category === edit.name ? value : category),
         }
+      }
       nextItems = storedInventoryRecords.items.map((item) =>
-        (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
-        && item.group === edit.group
+        item.group === edit.group
         && item.category === edit.name
           ? { ...item, category: value }
           : item)
@@ -6575,10 +6747,10 @@ function App() {
     }
     const nextOptions: StoredInventoryOptions = {
       ...inventoryOptions,
-      warehouseTaxonomies: {
-        ...inventoryOptions.warehouseTaxonomies,
-        [activeWarehouse]: nextTaxonomy,
-      },
+      ...nextTaxonomy,
+      warehouseTaxonomies: Object.fromEntries(
+        inventoryOptions.warehouses.map((warehouse) => [warehouse, nextTaxonomy]),
+      ),
     }
     try {
       persistInventoryChanges(nextOptions, nextItems)
@@ -6618,30 +6790,28 @@ function App() {
     }
 
     const isEditing = editingInventoryWarehouse !== null
-    const nextOptions: StoredInventoryOptions = isEditing
-      ? {
-          ...inventoryOptions,
-          warehouses: inventoryOptions.warehouses.map((warehouse) =>
-            warehouse === editingInventoryWarehouse ? name : warehouse),
-          warehouseTaxonomies: Object.fromEntries(
-            Object.entries(inventoryOptions.warehouseTaxonomies ?? {}).map(([warehouse, taxonomy]) =>
-              warehouse === editingInventoryWarehouse ? [name, taxonomy] : [warehouse, taxonomy]),
-          ),
-        }
-      : {
-          ...inventoryOptions,
-          warehouses: [...inventoryOptions.warehouses, name],
-          warehouseTaxonomies: {
-            ...inventoryOptions.warehouseTaxonomies,
-            [name]: { groupsByKind: { کالا: [], خدمات: [], تولید: [] }, categoriesByGroup: {} },
-          },
-        }
-    const nextItems = isEditing
+    const warehouses = isEditing
+      ? inventoryOptions.warehouses.map((warehouse) =>
+          warehouse === editingInventoryWarehouse ? name : warehouse)
+      : [...inventoryOptions.warehouses, name]
+    const sharedTaxonomy: InventoryTaxonomy = inventoryOptions
+    const nextOptions: StoredInventoryOptions = {
+      ...inventoryOptions,
+      warehouses,
+      warehouseTaxonomies: Object.fromEntries(
+        warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
+      ),
+    }
+    const renamedItems = isEditing
       ? storedInventoryRecords.items.map((item) =>
           (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === editingInventoryWarehouse
             ? { ...item, warehouse: name }
             : item)
       : storedInventoryRecords.items
+    const nextItems = synchronizeInventoryCatalog(
+      renamedItems,
+      nextOptions.warehouses,
+    )
     try {
       persistInventoryChanges(nextOptions, nextItems)
       setSelectedWarehouse(name)
@@ -6669,6 +6839,29 @@ function App() {
         setInventoryWarehouseError('')
         setInventoryWarehousesOpen(false)
         setInventoryWarehouseFormOpen(true)
+      } else if (target.type === 'product') {
+        const item = inventoryItems.find((candidate) => candidate.id === target.id)
+        if (!item) {
+          setNotice('کالای موردنظر برای ویرایش پیدا نشد.')
+          setInventoryActionItem(null)
+          return
+        }
+        setEditingInventoryProductId(item.id)
+        setInventoryProductFields({
+          code: item.code ?? '',
+          name: item.name,
+          brand: item.brand === '—' ? '' : item.brand,
+          unit: item.unit,
+          secondaryUnit: item.secondaryUnit ?? '',
+          conversionRatio: item.conversionRatio === undefined ? '' : String(item.conversionRatio),
+          barcode: item.barcode ?? '',
+          stock: formatAccountBalanceInput(String(item.stock)),
+          purchasePrice: formatAccountBalanceInput(String(item.purchasePrice)),
+          salePrice: formatAccountBalanceInput(String(item.salePrice)),
+        })
+        setInventoryProductTab('basic')
+        setInventoryProductError('')
+        setInventoryProductOpen(true)
       } else {
         setEditingInventoryTaxonomy(
           target.type === 'group'
@@ -6689,28 +6882,61 @@ function App() {
       let nextOptions = inventoryOptions
       let nextItems = storedInventoryRecords.items
 
-      if (target.type === 'warehouse') {
-        const warehouseTaxonomies = { ...(inventoryOptions.warehouseTaxonomies ?? {}) }
-        delete warehouseTaxonomies[target.name]
+      if (target.type === 'product') {
+        const item = inventoryItems.find((candidate) => candidate.id === target.id)
+        if (!item) {
+          setNotice('کالای موردنظر برای حذف پیدا نشد.')
+          setInventoryActionItem(null)
+          return
+        }
+        const catalogId = item.catalogId ?? item.id
+        nextItems = storedInventoryRecords.items.filter(
+          (candidate) => (candidate.catalogId ?? candidate.id) !== catalogId,
+        )
+      } else if (target.type === 'warehouse') {
+        const warehouses = inventoryOptions.warehouses.filter((warehouse) => warehouse !== target.name)
+        const centralItems = storedInventoryRecords.items.filter(
+          (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === DEFAULT_INVENTORY_WAREHOUSE,
+        )
+        const centralIndexByCatalog = new Map(
+          centralItems.map((item, index) => [item.catalogId ?? item.id, index]),
+        )
+        nextItems = storedInventoryRecords.items.filter(
+          (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) !== target.name,
+        )
+        for (const item of storedInventoryRecords.items.filter(
+          (candidate) => (candidate.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === target.name,
+        )) {
+          const centralIndex = centralIndexByCatalog.get(item.catalogId ?? item.id)
+          if (centralIndex === undefined) {
+            const movedItem = { ...item, warehouse: DEFAULT_INVENTORY_WAREHOUSE }
+            centralIndexByCatalog.set(movedItem.catalogId ?? movedItem.id, centralItems.length)
+            centralItems.push(movedItem)
+            nextItems.push(movedItem)
+            continue
+          }
+          const centralItem = centralItems[centralIndex]
+          centralItems[centralIndex] = {
+            ...centralItem,
+            stock: centralItem.stock + item.stock,
+            lastMovementAt: centralItem.lastMovementAt > item.lastMovementAt
+              ? centralItem.lastMovementAt
+              : item.lastMovementAt,
+          }
+          nextItems = nextItems.map((candidate) => (
+            candidate.id === centralItem.id ? centralItems[centralIndex] : candidate
+          ))
+        }
+        const sharedTaxonomy: InventoryTaxonomy = inventoryOptions
         nextOptions = {
           ...inventoryOptions,
-          warehouses: inventoryOptions.warehouses.filter((warehouse) => warehouse !== target.name),
-          warehouseTaxonomies,
+          warehouses,
+          warehouseTaxonomies: Object.fromEntries(
+            warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
+          ),
         }
-        nextItems = storedInventoryRecords.items.map((item) =>
-          (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === target.name
-            ? {
-                ...item,
-                warehouse: DEFAULT_INVENTORY_WAREHOUSE,
-                group: 'بدون گروه',
-                category: 'بدون دسته‌بندی',
-              }
-            : item)
       } else {
-        const warehouseTaxonomies = inventoryOptions.warehouseTaxonomies ?? {
-          [DEFAULT_INVENTORY_WAREHOUSE]: activeWarehouseTaxonomy,
-        }
-        const taxonomy = warehouseTaxonomies[activeWarehouse] ?? activeWarehouseTaxonomy
+        let taxonomy = activeWarehouseTaxonomy
         if (target.type === 'group') {
           const categoriesByGroup = { ...taxonomy.categoriesByGroup }
           const groupsByKind = {
@@ -6720,20 +6946,16 @@ function App() {
           if (!Object.values(groupsByKind).some((groups) => groups.includes(target.name))) {
             delete categoriesByGroup[target.name]
           }
+          taxonomy = { ...taxonomy, groupsByKind, categoriesByGroup }
           nextOptions = {
             ...inventoryOptions,
-            warehouseTaxonomies: {
-              ...warehouseTaxonomies,
-              [activeWarehouse]: {
-                ...taxonomy,
-                groupsByKind,
-                categoriesByGroup,
-              },
-            },
+            ...taxonomy,
+            warehouseTaxonomies: Object.fromEntries(
+              inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
+            ),
           }
           nextItems = storedInventoryRecords.items.map((item) =>
-            (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
-            && item.kind === target.kind
+            item.kind === target.kind
             && item.group === target.name
               ? { ...item, group: 'بدون گروه', category: 'بدون دسته‌بندی' }
               : item)
@@ -6742,23 +6964,23 @@ function App() {
             setInventoryCategory('همه')
           }
         } else {
-          nextOptions = {
-            ...inventoryOptions,
-            warehouseTaxonomies: {
-              ...warehouseTaxonomies,
-              [activeWarehouse]: {
-                ...taxonomy,
-                categoriesByGroup: {
-                  ...taxonomy.categoriesByGroup,
-                  [target.group]: (taxonomy.categoriesByGroup[target.group] ?? [])
-                    .filter((category) => category !== target.name),
-                },
-              },
+          taxonomy = {
+            ...taxonomy,
+            categoriesByGroup: {
+              ...taxonomy.categoriesByGroup,
+              [target.group]: (taxonomy.categoriesByGroup[target.group] ?? [])
+                .filter((category) => category !== target.name),
             },
           }
+          nextOptions = {
+            ...inventoryOptions,
+            ...taxonomy,
+            warehouseTaxonomies: Object.fromEntries(
+              inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
+            ),
+          }
           nextItems = storedInventoryRecords.items.map((item) =>
-            (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse
-            && item.group === target.group
+            item.group === target.group
             && item.category === target.name
               ? { ...item, category: 'بدون دسته‌بندی' }
               : item)
@@ -6767,6 +6989,9 @@ function App() {
       }
 
       persistInventoryChanges(nextOptions, nextItems)
+      if (target.type === 'product') {
+        setNotice('کالا از فهرست همهٔ انبارها حذف شد.')
+      }
       if (target.type === 'warehouse') {
         if (selectedWarehouse === target.name) {
           setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
@@ -8738,7 +8963,7 @@ function App() {
                               inputMode="numeric"
                               autoComplete="off"
                               aria-label="مبلغ دریافتی به ریال"
-                              value={salesInvoiceReceiptFields.amount}
+                              value={formatAccountBalanceInput(salesInvoiceReceiptFields.amount)}
                               onChange={(event) => setSalesInvoiceReceiptFields((fields) => ({
                                 ...fields,
                                 amount: formatAccountBalanceInput(event.target.value),
@@ -9693,7 +9918,7 @@ function App() {
                                   <input
                                     aria-label={`مقدار ${item.name}`}
                                     inputMode="decimal"
-                                    value={line.quantity}
+                                    value={formatPersonBalance(line.quantity)}
                                     onChange={(event) => {
                                       const quantity = parsePersonBalance(event.target.value)
                                       if (quantity === null) return
@@ -9721,7 +9946,7 @@ function App() {
                                   <input
                                     aria-label={`تخفیف ${item.name}`}
                                     inputMode="numeric"
-                                    value={line.discount}
+                                    value={formatPersonBalance(line.discount)}
                                     onChange={(event) => {
                                       const discount = parsePersonBalance(event.target.value)
                                       if (discount === null) return
@@ -12615,7 +12840,7 @@ function App() {
                 <div
                   className="inventory-action-menu"
                   role="menu"
-                  aria-label={`عملیات ${inventoryActionItem.type === 'warehouse' ? 'انبار' : inventoryActionItem.type === 'group' ? 'گروه' : 'دسته‌بندی'} ${inventoryActionItem.name}`}
+                  aria-label={`عملیات ${inventoryActionItem.type === 'warehouse' ? 'انبار' : inventoryActionItem.type === 'group' ? 'گروه' : inventoryActionItem.type === 'category' ? 'دسته‌بندی' : 'کالا'} ${inventoryActionItem.name}`}
                   style={{ left: inventoryActionItem.x, top: inventoryActionItem.y }}
                 >
                   <span className="inventory-action-menu-title">{inventoryActionItem.name}</span>
@@ -12730,15 +12955,50 @@ function App() {
 
               <section className="inventory-list" aria-label={`فهرست ${inventoryKind}`}>
                 {filteredInventory.map((item) => (
-                  <article className="inventory-item" key={item.id}>
+                  <article
+                    className="inventory-item"
+                    key={item.id}
+                    onContextMenu={item.kind === 'کالا' ? (event) => event.preventDefault() : undefined}
+                    onPointerDown={item.kind === 'کالا'
+                      ? (event) => startInventoryActionPress(event, { type: 'product', name: item.name, id: item.id })
+                      : undefined}
+                    onPointerMove={item.kind === 'کالا' ? moveInventoryActionPress : undefined}
+                    onPointerUp={item.kind === 'کالا' ? clearInventoryActionPressTimer : undefined}
+                    onPointerCancel={item.kind === 'کالا' ? clearInventoryActionPressTimer : undefined}
+                  >
                     <div className={`inventory-item-prices${item.kind === 'خدمات' ? ' service' : ''}`}>
-                      <span className="inventory-price-tag sale">{formatPersonBalance(item.salePrice)} <small>ریال</small></span>
                       {item.kind !== 'خدمات' && (
-                        <span className="inventory-price-tag purchase">{formatPersonBalance(item.purchasePrice)} <small>ریال</small></span>
+                        <div className="inventory-price-row">
+                          <span className="inventory-price-label">خرید</span>
+                          <span className="inventory-price-tag purchase">{formatPersonBalance(item.purchasePrice)} <small>ریال</small></span>
+                        </div>
                       )}
+                      <div className="inventory-price-row">
+                        <span className="inventory-price-label">فروش</span>
+                        <span className="inventory-price-tag sale">{formatPersonBalance(item.salePrice)} <small>ریال</small></span>
+                      </div>
                     </div>
+                    {item.kind === 'کالا' && (
+                      <button
+                        className="inventory-item-menu-trigger inventory-action-trigger"
+                        type="button"
+                        aria-label={`عملیات کالای ${item.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={inventoryActionItem?.type === 'product' && inventoryActionItem.id === item.id}
+                        onClick={(event) => activateInventoryActionItem(event, {
+                          type: 'product',
+                          name: item.name,
+                          id: item.id,
+                        })}
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
+                    )}
                     <div className="inventory-item-copy">
                       <h2>{item.name}</h2>
+                      {item.kind === 'کالا' && item.code && (
+                        <small className="inventory-item-code">کد: {item.code}</small>
+                      )}
                       <p>{item.brand}</p>
                       <span>{formatPersonBalance(item.stock)} {item.unit}</span>
                     </div>
@@ -12778,7 +13038,10 @@ function App() {
               <div
                 className="inventory-product-backdrop"
                 onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setInventoryProductOpen(false)
+                  if (event.target === event.currentTarget) {
+                    setInventoryProductOpen(false)
+                    setEditingInventoryProductId(null)
+                  }
                 }}
               >
                 <section
@@ -12790,15 +13053,20 @@ function App() {
                   <header className="inventory-product-heading">
                     <div className="inventory-product-title-block">
                       <span className="inventory-product-eyebrow">مدیریت کالا <span>•</span> انبار</span>
-                      <h2 id="inventory-product-title">معرفی کالای جدید</h2>
-                      <p>مشخصات کالا را وارد کنید تا به فهرست انبار اضافه شود.</p>
+                      <h2 id="inventory-product-title">{editingInventoryProductId ? 'ویرایش کالا' : 'معرفی کالای جدید'}</h2>
+                      <p>{editingInventoryProductId
+                        ? 'مشخصات کالا را ویرایش کنید؛ موجودی هر انبار مستقل ذخیره می‌شود.'
+                        : 'مشخصات کالا را وارد کنید تا به فهرست انبار اضافه شود.'}</p>
                     </div>
                     <div className="inventory-product-header-actions">
                       <span>{inventoryProductTab === 'basic' ? 'مرحله ۱ از ۲' : 'مرحله ۲ از ۲'}</span>
                       <button
                         type="button"
                         aria-label="بستن پنجره"
-                        onClick={() => setInventoryProductOpen(false)}
+                        onClick={() => {
+                          setInventoryProductOpen(false)
+                          setEditingInventoryProductId(null)
+                        }}
                       >
                         ×
                       </button>
@@ -12874,8 +13142,11 @@ function App() {
                           <span>ضریب</span>
                           <input
                             inputMode="decimal"
-                            value={inventoryProductFields.conversionRatio}
-                            onChange={(event) => setInventoryProductFields({ ...inventoryProductFields, conversionRatio: event.target.value })}
+                            value={formatDecimalInput(inventoryProductFields.conversionRatio)}
+                            onChange={(event) => setInventoryProductFields({
+                              ...inventoryProductFields,
+                              conversionRatio: formatDecimalInput(event.target.value),
+                            })}
                             placeholder="اختیاری"
                             aria-label="ضریب تبدیل"
                           />
@@ -12896,8 +13167,11 @@ function App() {
                           <span>موجودی</span>
                           <input
                             inputMode="numeric"
-                            value={inventoryProductFields.stock}
-                            onChange={(event) => setInventoryProductFields({ ...inventoryProductFields, stock: event.target.value })}
+                            value={formatAccountBalanceInput(inventoryProductFields.stock)}
+                            onChange={(event) => setInventoryProductFields({
+                              ...inventoryProductFields,
+                              stock: formatAccountBalanceInput(event.target.value),
+                            })}
                             aria-label="موجودی اولیه"
                           />
                         </label>
@@ -12905,8 +13179,11 @@ function App() {
                           <span>قیمت خرید</span>
                           <input
                             inputMode="numeric"
-                            value={inventoryProductFields.purchasePrice}
-                            onChange={(event) => setInventoryProductFields({ ...inventoryProductFields, purchasePrice: event.target.value })}
+                            value={formatAccountBalanceInput(inventoryProductFields.purchasePrice)}
+                            onChange={(event) => setInventoryProductFields({
+                              ...inventoryProductFields,
+                              purchasePrice: formatAccountBalanceInput(event.target.value),
+                            })}
                             aria-label="قیمت خرید"
                           />
                           <small>ریال</small>
@@ -12915,8 +13192,11 @@ function App() {
                           <span>قیمت فروش</span>
                           <input
                             inputMode="numeric"
-                            value={inventoryProductFields.salePrice}
-                            onChange={(event) => setInventoryProductFields({ ...inventoryProductFields, salePrice: event.target.value })}
+                            value={formatAccountBalanceInput(inventoryProductFields.salePrice)}
+                            onChange={(event) => setInventoryProductFields({
+                              ...inventoryProductFields,
+                              salePrice: formatAccountBalanceInput(event.target.value),
+                            })}
                             aria-label="قیمت فروش"
                           />
                           <small>ریال</small>
@@ -12925,8 +13205,11 @@ function App() {
                     )}
                     {inventoryProductError && <p className="inventory-product-error" role="alert">{inventoryProductError}</p>}
                     <footer className="inventory-product-actions">
-                      <button type="button" onClick={() => setInventoryProductOpen(false)}>لغو</button>
-                      <button type="submit">تایید</button>
+                      <button type="button" onClick={() => {
+                        setInventoryProductOpen(false)
+                        setEditingInventoryProductId(null)
+                      }}>لغو</button>
+                      <button type="submit">{editingInventoryProductId ? 'ذخیره تغییرات' : 'تایید'}</button>
                     </footer>
                   </form>
                 </section>
@@ -12970,8 +13253,11 @@ function App() {
                         <div className="inventory-service-price">
                           <input
                             inputMode="numeric"
-                            value={inventoryServiceFields.price}
-                            onChange={(event) => setInventoryServiceFields({ ...inventoryServiceFields, price: event.target.value })}
+                            value={formatAccountBalanceInput(inventoryServiceFields.price)}
+                            onChange={(event) => setInventoryServiceFields({
+                              ...inventoryServiceFields,
+                              price: formatAccountBalanceInput(event.target.value),
+                            })}
                             placeholder="مبلغ را وارد کنید"
                             aria-label="قیمت هر واحد خدمات"
                           />
@@ -13803,8 +14089,11 @@ function App() {
                             <span>ماندهٔ اولیه <small>(ریال)</small></span>
                             <input
                               inputMode="numeric"
-                              value={personFormFields.balance}
-                              onChange={(event) => setPersonFormFields({ ...personFormFields, balance: event.target.value })}
+                              value={formatAccountBalanceInput(personFormFields.balance)}
+                              onChange={(event) => setPersonFormFields({
+                                ...personFormFields,
+                                balance: formatAccountBalanceInput(event.target.value),
+                              })}
                               placeholder="۰"
                               dir="ltr"
                             />
@@ -14497,7 +14786,7 @@ function App() {
                       inputMode="numeric"
                       autoComplete="off"
                       aria-label={`مبلغ ${moneyDocumentKind} به ریال`}
-                      value={moneyDocumentFields.amount}
+                      value={formatAccountBalanceInput(moneyDocumentFields.amount)}
                       onChange={(event) => setMoneyDocumentFields((fields) => ({
                         ...fields,
                         amount: formatAccountBalanceInput(event.target.value),
