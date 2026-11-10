@@ -2533,40 +2533,6 @@
   }
 }
 
-.active-store-chip {
-  max-width: min(100%, 275px);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 9px;
-  padding: 5px 8px;
-  color: #e5f6ef;
-  background: #ffffff18;
-  border: 1px solid #ffffff2a;
-  border-radius: 11px;
-  font-size: 9px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.active-store-chip .icon-art {
-  width: 21px;
-  height: 21px;
-  flex: 0 0 auto;
-}
-
-.active-store-chip > span:nth-child(2) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.active-store-action {
-  flex: 0 0 auto;
-  color: #9be0ca;
-  text-decoration: underline;
-}
-
 .people-page {
   max-width: 650px;
   margin: 0 auto;
@@ -8192,8 +8158,11 @@ button:focus-visible {
 }
 
 .inventory-warehouses-chevron {
+  align-self: center;
+  margin: 0;
   color: var(--app-color-accent);
   font-size: 15px;
+  transform: translateY(-5px);
 }
 
 .inventory-warehouse-add {
@@ -8614,12 +8583,6 @@ button:focus-visible {
   direction: rtl;
 }
 
-.inventory-stocktake-toolbar .inventory-stocktake-warehouse-wrap {
-  flex: 1 0 100%;
-  order: 2;
-  margin-bottom: 0;
-}
-
 .inventory-stocktake-transfer-button {
   min-width: 0;
   flex: 1 1 calc(50% - 5px);
@@ -8663,69 +8626,6 @@ button:focus-visible {
   flex: 0 0 auto;
   font-size: 21px;
   line-height: 1;
-}
-
-.inventory-stocktake-warehouse-wrap {
-  position: relative;
-}
-
-.inventory-stocktake-warehouse {
-  width: 100%;
-  min-height: 68px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 18px;
-  padding-inline-end: 10px;
-  color: var(--app-color-ink);
-  background: var(--app-color-tint);
-  border: 1px solid var(--app-color-border);
-  border-radius: 21px;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 800;
-  text-align: right;
-  cursor: pointer;
-}
-
-.inventory-stocktake-warehouse > span:last-child {
-  color: var(--app-color-accent);
-  font-size: 20px;
-}
-
-.inventory-stocktake-warehouse-menu {
-  position: absolute;
-  z-index: 2;
-  top: calc(100% + 6px);
-  right: 0;
-  left: 0;
-  max-height: 240px;
-  overflow: auto;
-  padding: 6px;
-  background: var(--app-color-surface-raised);
-  border: 1px solid var(--app-color-border);
-  border-radius: 15px;
-  box-shadow: 0 8px 22px #172a2420;
-}
-
-.inventory-stocktake-warehouse-menu button {
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 12px;
-  color: var(--app-color-ink);
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
-  font: inherit;
-  text-align: right;
-  cursor: pointer;
-}
-
-.inventory-stocktake-warehouse-menu button[aria-pressed='true'] {
-  color: var(--app-color-accent);
-  background: var(--app-color-tint);
-  font-weight: 800;
 }
 
 .inventory-stocktake-search {
@@ -9058,6 +8958,15 @@ button:focus-visible {
   font-size: 13px;
 }
 
+.inventory-transfer-fields select {
+  padding-left: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%2371847f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  background-size: 14px;
+  appearance: none;
+}
+
 .inventory-transfer-fields select:focus,
 .inventory-transfer-fields input:focus {
   border-color: var(--app-color-bright);
@@ -9083,6 +8992,7 @@ button:focus-visible {
 }
 
 .inventory-transfer-product-trigger {
+  position: relative;
   min-width: 0;
   min-height: 58px;
   display: flex;
@@ -9111,9 +9021,18 @@ button:focus-visible {
 }
 
 .inventory-transfer-product-chevron {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 50%;
+  left: 7px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  margin: 0;
   color: var(--app-color-muted, var(--app-color-ink));
   font-size: 15px;
+  line-height: 1;
+  transform: translateY(calc(-50% - 3px));
 }
 
 .inventory-transfer-product-picker-panel {
@@ -9318,33 +9237,35 @@ button:focus-visible {
   display: grid;
   align-items: center;
   justify-items: center;
-  overflow: auto;
-  padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
-  background: rgba(5, 15, 20, .58);
-  backdrop-filter: blur(5px);
+  overflow: hidden;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  background: rgba(5, 15, 20, .64);
+  backdrop-filter: blur(8px);
 }
 
 .inventory-detail-dialog {
-  width: min(100%, 590px);
-  max-height: 100%;
+  width: min(100%, 680px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   color: var(--app-color-ink);
   background: var(--app-color-surface-raised);
-  border: 1px solid var(--app-color-border);
-  border-radius: 22px;
-  box-shadow: 0 22px 60px #00000032;
+  border: 1px solid color-mix(in srgb, var(--app-color-border) 72%, transparent);
+  border-radius: 26px;
+  box-shadow: 0 32px 90px #00000040, 0 4px 16px #00000012;
 }
 
 .inventory-detail-header {
   flex: 0 0 auto;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 18px 19px 14px;
-  border-bottom: 1px solid var(--app-color-border);
+  gap: 16px;
+  padding: 24px 26px;
+  color: #f2fffa;
+  background:
+    radial-gradient(circle at 12% 130%, #33ab9160 0, transparent 38%),
+    linear-gradient(118deg, var(--app-color-navy), var(--app-color-deep));
 }
 
 .inventory-detail-header > div {
@@ -9352,56 +9273,80 @@ button:focus-visible {
 }
 
 .inventory-detail-header span {
-  color: var(--app-color-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 6px 10px;
+  overflow: hidden;
+  color: #d8f6e9;
+  background: #ffffff17;
+  border: 1px solid #ffffff2b;
+  border-radius: 999px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inventory-detail-header h2 {
   overflow: hidden;
-  margin: 4px 0 0;
-  color: var(--app-color-ink);
-  font-size: 17px;
+  margin: 9px 0 0;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 850;
   text-overflow: ellipsis;
 }
 
 .inventory-detail-header > button {
-  width: 35px;
-  height: 35px;
+  width: 42px;
+  height: 42px;
   flex: 0 0 auto;
-  color: var(--app-color-ink);
-  background: var(--app-color-tint);
-  border: 1px solid var(--app-color-border);
-  border-radius: 11px;
+  color: #effff8;
+  background: #ffffff17;
+  border: 1px solid #ffffff36;
+  border-radius: 50%;
   font: inherit;
   font-size: 23px;
   cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.inventory-detail-header > button:hover {
+  background: #ffffff2b;
+  transform: rotate(90deg);
 }
 
 .inventory-detail-header > button:focus-visible {
-  outline: 2px solid var(--app-color-bright);
+  outline: 2px solid #9de6ce;
   outline-offset: 2px;
 }
 
 .inventory-detail-properties {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
-  padding: 15px 19px;
-  border-bottom: 1px solid var(--app-color-border);
+  padding: 18px 22px;
+  background: var(--app-color-surface-raised);
 }
 
 .inventory-detail-properties > div {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  align-content: start;
+  gap: 6px;
+  padding: 12px 13px;
+  background: var(--app-color-tint);
+  border: 1px solid var(--app-color-border);
+  border-radius: 14px;
 }
 
 .inventory-detail-properties dt {
   color: var(--app-color-mid);
-  font-size: 10px;
+  font-size: 9px;
+  font-weight: 650;
 }
 
 .inventory-detail-properties dd {
@@ -9409,15 +9354,16 @@ button:focus-visible {
   margin: 0;
   color: var(--app-color-ink);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 800;
+  line-height: 1.7;
 }
 
 .inventory-detail-history {
-  min-height: 0;
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
+  padding: 0 22px 18px;
 }
 
 .inventory-detail-history-heading {
@@ -9426,24 +9372,29 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 13px 19px 9px;
+  padding: 13px 0 10px;
 }
 
 .inventory-detail-history-heading h3 {
   margin: 0;
   color: var(--app-color-ink);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .inventory-detail-history-heading span {
-  color: var(--app-color-mid);
+  padding: 5px 9px;
+  color: var(--app-color-accent);
+  background: var(--app-color-tint);
+  border-radius: 999px;
   font-size: 10px;
+  font-weight: 750;
 }
 
 .inventory-detail-history ol {
-  overflow: auto;
+  overflow: visible;
   margin: 0;
-  padding: 0 19px 12px;
+  padding: 0 1px 2px;
   list-style: none;
 }
 
@@ -9451,23 +9402,28 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--app-color-border);
+  margin-bottom: 8px;
+  padding: 12px;
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: 14px;
+  transition: border-color 140ms ease, transform 140ms ease;
 }
 
-.inventory-detail-movement:last-child {
-  border-bottom: 0;
+.inventory-detail-movement:hover {
+  border-color: var(--app-color-accent);
+  transform: translateY(-1px);
 }
 
 .inventory-detail-movement-mark {
-  width: 29px;
-  height: 29px;
-  flex: 0 0 29px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
   display: grid;
   place-items: center;
   color: var(--app-color-accent);
   background: var(--app-color-tint);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 17px;
   font-weight: 900;
 }
@@ -9508,10 +9464,13 @@ button:focus-visible {
 
 .inventory-detail-history-empty {
   margin: 0;
-  padding: 18px 19px 22px;
+  padding: 24px 16px;
   color: var(--app-color-mid);
   font-size: 11px;
   text-align: center;
+  background: var(--app-color-tint);
+  border: 1px dashed var(--app-color-border);
+  border-radius: 16px;
 }
 
 @media (max-width: 430px) {
@@ -9531,27 +9490,36 @@ button:focus-visible {
     padding-left: 12px;
   }
 
-  .inventory-stocktake-warehouse {
-    min-height: 68px;
-    gap: 5px;
-    padding: 0 10px;
-    font-size: 12px;
-  }
-
   .inventory-detail-properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-    padding: 13px 15px;
+    padding: 14px;
   }
 
-  .inventory-detail-header,
+  .inventory-detail-header {
+    gap: 10px;
+    padding: 18px;
+  }
+
+  .inventory-detail-header h2 {
+    font-size: 19px;
+  }
+
+  .inventory-detail-properties > div {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .inventory-detail-history {
+    padding: 0 14px 14px;
+  }
+
   .inventory-detail-history-heading {
-    padding-right: 15px;
-    padding-left: 15px;
+    padding-top: 11px;
   }
 
   .inventory-detail-history ol {
-    padding-right: 15px;
-    padding-left: 15px;
+    padding: 0 1px 2px;
   }
 }
 
@@ -10014,6 +9982,111 @@ button:focus-visible {
 .inventory-add-button > span {
   position: relative;
   z-index: 1;
+}
+
+.inventory-add-button > .inventory-add-icon {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.inventory-add-button > .inventory-add-icon--product {
+  width: 32px;
+  height: 32px;
+}
+
+.inventory-box-body {
+  fill: #ffffff20;
+}
+
+.inventory-box-seam {
+  opacity: .8;
+}
+
+.inventory-box-lid-closed {
+  fill: #ffffff36;
+  transform-origin: 20px 14px;
+  animation: inventory-box-lid-close 3.2s ease-in-out infinite;
+}
+
+.inventory-box-lid-open {
+  opacity: 0;
+  transform-origin: 20px 14px;
+  animation: inventory-box-lid-open 3.2s ease-in-out infinite;
+}
+
+.inventory-add-button > .inventory-add-icon--service {
+  animation: inventory-service-icon-work 2.4s ease-in-out infinite;
+  transform-origin: 17px 24px;
+}
+
+.inventory-add-button > .inventory-add-icon--production {
+  fill: currentColor;
+  stroke: none;
+}
+
+.inventory-formula-main {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.inventory-formula-symbol {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  animation: inventory-formula-drift 2.4s ease-in-out infinite;
+}
+
+.inventory-formula-symbol--multiply {
+  animation-delay: 400ms;
+}
+
+.inventory-formula-symbol--equals {
+  animation-delay: 800ms;
+}
+
+.inventory-add-button:hover > .inventory-add-icon--product,
+.inventory-add-button:focus-visible > .inventory-add-icon--product {
+  animation-duration: 1.4s;
+}
+
+.inventory-add-button:hover > .inventory-add-icon--service,
+.inventory-add-button:focus-visible > .inventory-add-icon--service {
+  animation-duration: 1.2s;
+}
+
+.inventory-add-button:hover .inventory-formula-symbol,
+.inventory-add-button:focus-visible .inventory-formula-symbol {
+  animation-duration: 1.2s;
+}
+
+@keyframes inventory-box-lid-close {
+  0%, 26%, 82%, 100% { opacity: 1; transform: translateY(0); }
+  40%, 68% { opacity: 0; transform: translateY(2px); }
+}
+
+@keyframes inventory-box-lid-open {
+  0%, 30%, 78%, 100% { opacity: 0; transform: translateY(2px); }
+  42%, 66% { opacity: 1; transform: translateY(-1px); }
+}
+
+@keyframes inventory-service-icon-work {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-5deg); }
+  70% { transform: rotate(4deg); }
+}
+
+@keyframes inventory-formula-drift {
+  0%, 100% { opacity: .58; transform: translateY(1px) scale(.92); }
+  50% { opacity: 1; transform: translateY(-1px) scale(1.08); }
 }
 
 .app-frame[data-theme='dark'] .inventory-hero {
@@ -10757,15 +10830,30 @@ button:focus-visible {
   font-size: 11px;
 }
 
-.inventory-service-code-badge {
+.inventory-service-close {
+  width: 38px;
+  height: 38px;
   flex: 0 0 auto;
-  padding: 8px 11px;
-  color: #d8f6e9;
+  display: grid;
+  place-items: center;
+  color: #effff8;
   background: #ffffff17;
-  border: 1px solid #ffffff2b;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 750;
+  border: 1px solid #ffffff36;
+  border-radius: 50%;
+  font: inherit;
+  font-size: 23px;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.inventory-service-close:hover {
+  background: #ffffff2b;
+  transform: rotate(90deg);
+}
+
+.inventory-service-close:focus-visible {
+  outline: 2px solid #9de6ce;
+  outline-offset: 2px;
 }
 
 .inventory-service-form {
@@ -10937,9 +11025,9 @@ button:focus-visible {
     line-height: 1.8;
   }
 
-  .inventory-service-code-badge {
-    padding: 7px 8px;
-    font-size: 8px;
+  .inventory-service-close {
+    width: 36px;
+    height: 36px;
   }
 
   .inventory-service-form {
@@ -10969,7 +11057,7 @@ button:focus-visible {
 }
 
 .inventory-unit-selector:has(.inventory-unit-menu) {
-  z-index: 8;
+  z-index: 20;
 }
 
 .inventory-unit-control {
@@ -11010,6 +11098,9 @@ button:focus-visible {
 }
 
 .inventory-unit-chevron {
+  position: relative;
+  top: -7px;
+  left: -14px;
   flex: 0 0 auto;
   color: #76908a;
   font-size: 16px;
@@ -11041,32 +11132,46 @@ button:focus-visible {
 
 .inventory-unit-menu {
   position: absolute;
-  z-index: 20;
+  z-index: 21;
   top: calc(100% + 6px);
   right: 0;
   left: 46px;
-  max-height: 190px;
+  max-height: min(220px, 40vh);
   display: grid;
-  gap: 3px;
+  gap: 4px;
   overflow: auto;
-  padding: 5px;
+  padding: 7px;
   background: var(--app-color-surface, #fff);
   border: 1px solid #dce9e3;
-  border-radius: 13px;
-  box-shadow: 0 12px 30px #153d3326;
+  border-radius: 15px;
+  box-shadow: 0 16px 36px #153d3333;
+}
+
+.inventory-unit-menu--portal {
+  position: fixed;
+  z-index: 80;
+  right: auto;
+  bottom: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.inventory-unit-menu--portal::-webkit-scrollbar {
+  display: none;
 }
 
 .inventory-unit-menu button {
-  min-height: 35px;
-  padding: 0 10px;
+  min-height: 42px;
+  padding: 0 12px;
   color: #385553;
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
   cursor: pointer;
+  transition: background 130ms ease, color 130ms ease;
 }
 
 .inventory-unit-menu button:hover,
@@ -19737,6 +19842,215 @@ button:focus-visible {
 
 .account-card.cash {
   position: relative;
+  min-height: 198px;
+  display: block;
+  overflow: visible;
+  padding: 0;
+  color: #234b3e;
+  background: linear-gradient(128deg, #f8fbef, #eaf5e9 54%, #dcefe4);
+  border: 1px solid #b9d9c7;
+  border-radius: 20px;
+  box-shadow: 0 12px 26px rgba(31, 99, 73, .1);
+  isolation: isolate;
+}
+
+.account-cash-card-content {
+  position: relative;
+  z-index: 1;
+  min-height: 198px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 14px;
+}
+
+.account-cash-card-top,
+.account-cash-card-brand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.account-cash-card-top {
+  justify-content: space-between;
+  gap: 14px;
+  direction: rtl;
+}
+
+.account-cash-card-brand {
+  gap: 11px;
+}
+
+.account-cash-card-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #176f5d;
+  background: linear-gradient(145deg, #f8fff9, #dcefe4);
+  border: 1px solid #c0e3d1;
+  border-radius: 15px;
+  box-shadow: 0 4px 12px #073f3526, inset 0 1px #ffffff;
+}
+
+.account-cash-card-icon svg {
+  width: 32px;
+  height: 32px;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-cash-card-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.account-cash-card-title strong {
+  overflow: hidden;
+  color: #173f35;
+  font-size: 13px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-cash-card-title > span,
+.account-cash-card-balance > span {
+  color: #5a796d;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.account-cash-card-actions {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  direction: ltr;
+}
+
+.account-cash-card-actions .account-card-action-trigger {
+  color: #32745e;
+  background: #ffffffad;
+  border-color: #b7d8c5;
+}
+
+.account-cash-card-actions .account-card-action-trigger:hover,
+.account-cash-card-actions .account-card-action-trigger:focus-visible {
+  color: #175f49;
+  background: #fff;
+  outline: 2px solid #67a98755;
+  outline-offset: 2px;
+}
+
+.account-cash-card-actions .account-card-action-menu {
+  top: calc(100% + 6px);
+  z-index: 20;
+  right: auto;
+  left: 0;
+}
+
+.account-cash-card-balance {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  background: #ffffff9c;
+  border: 1px solid #c5dfcf;
+  border-radius: 14px;
+}
+
+.account-cash-card-balance strong {
+  overflow-wrap: anywhere;
+  color: #164b3c;
+  font-size: clamp(20px, 5vw, 25px);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+.account-cash-card-balance small {
+  color: #638576;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.account-cash-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  color: #57766a;
+  border-top: 1px solid #bad8c7;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.account-cash-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.account-cash-card-status i {
+  width: 7px;
+  height: 7px;
+  background: #a7e8a4;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #4ba77e24;
+}
+
+.app-frame[data-theme='dark'] .account-card.cash {
+  background: linear-gradient(128deg, #103d37, #125b4e 54%, #14735e);
+  border-color: #307c68;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .24);
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-title strong,
+.app-frame[data-theme='dark'] .account-cash-card-balance strong {
+  color: #fff;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-title > span,
+.app-frame[data-theme='dark'] .account-cash-card-balance > span,
+.app-frame[data-theme='dark'] .account-cash-card-balance small,
+.app-frame[data-theme='dark'] .account-cash-card-footer {
+  color: #d3eee3;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-balance {
+  background: #073f3530;
+  border-color: #ffffff1e;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-footer {
+  border-top-color: #ffffff2a;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-icon {
+  color: #ffe7a4;
+  background: #ffffff19;
+  border-color: #ffffff30;
+  box-shadow: inset 0 1px #ffffff1f;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-actions .account-card-action-trigger {
+  color: #f2fff8;
+  background: #ffffff18;
+  border-color: #ffffff30;
+}
+
+.app-frame[data-theme='dark'] .account-cash-card-actions .account-card-action-trigger:hover,
+.app-frame[data-theme='dark'] .account-cash-card-actions .account-card-action-trigger:focus-visible {
+  color: #ffe7a4;
+  background: #ffffff27;
+  outline-color: #ffe7a466;
 }
 
 .account-card-action-trigger {
@@ -21021,6 +21335,20 @@ button:focus-visible {
   .account-card {
     gap: 8px;
     padding: 10px;
+  }
+
+  .account-card.cash {
+    padding: 0;
+  }
+
+  .account-cash-card-content {
+    padding: 14px;
+  }
+
+  .account-cash-card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
   }
 
   .account-card-icon {

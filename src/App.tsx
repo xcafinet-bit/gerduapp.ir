@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import type { IScannerControls } from '@zxing/browser'
@@ -2182,6 +2183,12 @@ const emptyPersonForm: PersonFormFields = {
 
 const formatPersonBalance = (amount: number) => new Intl.NumberFormat('fa-IR').format(amount)
 const formatPersonCode = (code: number) => new Intl.NumberFormat('fa-IR', { useGrouping: false }).format(code)
+const normalizeInventorySearchText = (value: string) => value
+  .replace(/[۰-۹٠-٩]/g, (digit) => {
+    const code = digit.charCodeAt(0)
+    return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660)
+  })
+  .toLocaleLowerCase()
 
 function parsePersonCode(value: string) {
   const normalized = value.replace(/[۰-۹٠-٩]/g, (digit) => {
@@ -2482,6 +2489,12 @@ function App() {
   const [inventoryServiceError, setInventoryServiceError] = useState('')
   const [storedInventoryUnits, setStoredInventoryUnits] = useState(() => readStoredInventoryUnits(activeStoreId))
   const [inventoryUnitMenu, setInventoryUnitMenu] = useState<InventoryUnitTarget | null>(null)
+  const [inventoryUnitMenuPosition, setInventoryUnitMenuPosition] = useState<{
+    top: number
+    left: number
+    width: number
+    maxHeight: number
+  } | null>(null)
   const [inventoryUnitFormOpen, setInventoryUnitFormOpen] = useState(false)
   const [inventoryUnitFormTarget, setInventoryUnitFormTarget] = useState<InventoryUnitTarget>('product')
   const [inventoryUnitInput, setInventoryUnitInput] = useState('')
@@ -2510,7 +2523,6 @@ function App() {
   const [inventoryStocktakeSearch, setInventoryStocktakeSearch] = useState('')
   const [inventoryStocktakeCounts, setInventoryStocktakeCounts] = useState<Record<string, string>>({})
   const [inventoryStocktakeError, setInventoryStocktakeError] = useState('')
-  const [inventoryStocktakeWarehousesOpen, setInventoryStocktakeWarehousesOpen] = useState(false)
   const [inventoryTransferOpen, setInventoryTransferOpen] = useState(false)
   const [inventoryTransferSourceWarehouse, setInventoryTransferSourceWarehouse] = useState('')
   const [inventoryTransferWarehouse, setInventoryTransferWarehouse] = useState('')
@@ -2801,16 +2813,18 @@ function App() {
       }
     : inventoryOptions
   const inventoryGroups = activeWarehouseTaxonomy.groupsByKind[inventoryKind]
-  const inventoryServiceItemsByCatalog = new Map<string, InventoryRecord>()
-  for (const item of storedInventoryRecords.items) {
-    if (item.kind !== 'خدمات') continue
-    const catalogId = item.catalogId ?? item.id
-    const current = inventoryServiceItemsByCatalog.get(catalogId)
-    if (!current || item.warehouse === DEFAULT_SERVICE_WAREHOUSE) {
-      inventoryServiceItemsByCatalog.set(catalogId, item)
+  const inventoryServiceItems = useMemo(() => {
+    const itemsByCatalog = new Map<string, InventoryRecord>()
+    for (const item of storedInventoryRecords.items) {
+      if (item.kind !== 'خدمات') continue
+      const catalogId = item.catalogId ?? item.id
+      const current = itemsByCatalog.get(catalogId)
+      if (!current || item.warehouse === DEFAULT_SERVICE_WAREHOUSE) {
+        itemsByCatalog.set(catalogId, item)
+      }
     }
-  }
-  const inventoryServiceItems = [...inventoryServiceItemsByCatalog.values()]
+    return [...itemsByCatalog.values()]
+  }, [storedInventoryRecords.items])
   const inventoryProductionItemsByCatalog = new Map<string, InventoryRecord>()
   for (const item of storedInventoryRecords.items) {
     if (item.kind !== 'تولید') continue
@@ -2836,6 +2850,13 @@ function App() {
       item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
     )) === salesInvoiceDraftWarehouse
   ))
+  const salesInvoicePickerItems = useMemo(() => [
+    ...storedInventoryRecords.items.filter((item) => (
+      item.kind === 'کالا'
+      && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === salesInvoiceDraftWarehouse
+    )),
+    ...inventoryServiceItems,
+  ], [storedInventoryRecords.items, salesInvoiceDraftWarehouse, inventoryServiceItems])
   const inventoryStocktakeRecords = storedInventoryRecords.items.filter((item) => (
     item.kind === inventoryKind
     && (item.warehouse ?? (
@@ -2984,9 +3005,10 @@ function App() {
     return total + (adjustment.kind === 'addition' ? amount : -amount)
   }, 0)
   const salesInvoiceTotal = Math.max(0, salesInvoiceSubtotal + salesInvoiceAdjustmentTotal)
-  const filteredSalesInvoiceItems = salesInvoiceInventoryItems
-    .filter((item) => `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`
-      .toLocaleLowerCase().includes(salesInvoiceItemSearch.trim().toLocaleLowerCase()))
+  const filteredSalesInvoiceItems = salesInvoicePickerItems
+    .filter((item) => normalizeInventorySearchText(
+      `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`,
+    ).includes(normalizeInventorySearchText(salesInvoiceItemSearch.trim())))
   const salesInvoiceCatalogTaxonomy = salesInvoiceCatalogKind === 'خدمات'
     ? inventoryOptions.serviceTaxonomy ?? inventoryOptions
     : inventoryOptions
@@ -3015,8 +3037,9 @@ function App() {
       .filter((item) => salesInvoiceCatalogGroup === 'همه' || item.group === salesInvoiceCatalogGroup)
       .filter((item) => salesInvoiceCatalogCategory === 'همه' || item.category === salesInvoiceCatalogCategory)
       .filter((item) => !salesInvoiceCatalogSearch.trim()
-        || `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`
-          .toLocaleLowerCase().includes(salesInvoiceCatalogSearch.trim().toLocaleLowerCase()))
+        || normalizeInventorySearchText(
+          `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`,
+        ).includes(normalizeInventorySearchText(salesInvoiceCatalogSearch.trim())))
     : []
   const inventoryCategories = inventoryGroup === 'همه'
     ? [...new Set(Object.values(activeWarehouseTaxonomy.categoriesByGroup).flat())]
@@ -3311,7 +3334,10 @@ function App() {
   useEffect(() => {
     if (!inventoryUnitMenu) return
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest('.inventory-unit-selector')) {
+      if (
+        !(event.target instanceof Element)
+        || !event.target.closest('.inventory-unit-selector, .inventory-unit-menu')
+      ) {
         setInventoryUnitMenu(null)
       }
     }
@@ -3509,7 +3535,6 @@ function App() {
           setInventoryWarehouseStatsOpen(false)
         } else {
           setInventoryStocktakeOpen(false)
-          setInventoryStocktakeWarehousesOpen(false)
         }
       }
     }
@@ -6089,8 +6114,10 @@ function App() {
 
           const barcode = result.getText().trim()
           if (!barcode) return
-          const item = salesInvoiceInventoryItems.find((inventoryItem) => (
-            inventoryItem.barcode?.trim() === barcode || inventoryItem.code?.trim() === barcode
+          const normalizedBarcode = normalizeInventorySearchText(barcode)
+          const item = salesInvoicePickerItems.find((inventoryItem) => (
+            [inventoryItem.barcode, inventoryItem.code]
+              .some((value) => value && normalizeInventorySearchText(value.trim()) === normalizedBarcode)
           ))
 
           if (!item) {
@@ -6121,7 +6148,7 @@ function App() {
       controls?.stop()
     }
   }, [
-    salesInvoiceInventoryItems,
+    salesInvoicePickerItems,
     salesInvoiceBarcodeScannerOpen,
     selectSalesInvoiceItem,
   ])
@@ -6552,6 +6579,7 @@ function App() {
       setInventoryServiceFields((fields) => ({ ...fields, unit: value }))
     }
     setInventoryUnitMenu(null)
+    setInventoryUnitMenuPosition(null)
   }
 
   const renderInventoryUnitSelector = (
@@ -6559,64 +6587,100 @@ function App() {
     value: string,
     label: string,
     allowEmpty = false,
-  ) => (
-    <div className="inventory-unit-selector">
-      <div className="inventory-unit-control">
-        <button
-          className="inventory-unit-select"
-          type="button"
-          aria-label={`انتخاب ${label}`}
-          aria-haspopup="listbox"
-          aria-expanded={inventoryUnitMenu === target}
-          onClick={() => setInventoryUnitMenu(inventoryUnitMenu === target ? null : target)}
-        >
-          <span>{value || (allowEmpty ? 'انتخاب واحد دوم' : 'انتخاب واحد')}</span>
-          <span className="dropdown-chevron inventory-unit-chevron" aria-hidden="true">⌄</span>
-        </button>
-        <button
-          className="inventory-unit-add"
-          type="button"
-          aria-label={`افزودن واحد برای ${label}`}
-          title="افزودن واحد جدید"
-          onClick={() => {
-            setInventoryUnitFormTarget(target)
-            setInventoryUnitInput('')
-            setInventoryUnitError(storedInventoryUnits.error)
-            setInventoryUnitMenu(null)
-            setInventoryUnitFormOpen(true)
-          }}
-        >
-          +
-        </button>
+  ) => {
+    const unitMenu = inventoryUnitMenu === target && (
+      <div
+        className="inventory-unit-menu inventory-unit-menu--portal"
+        role="listbox"
+        aria-label={`واحدهای ${label}`}
+        style={inventoryUnitMenuPosition ? {
+          top: inventoryUnitMenuPosition.top,
+          left: inventoryUnitMenuPosition.left,
+          width: inventoryUnitMenuPosition.width,
+          maxHeight: inventoryUnitMenuPosition.maxHeight,
+        } : undefined}
+      >
+        {allowEmpty && (
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => setInventoryUnitValue(target, '')}
+          >
+            بدون واحد دوم
+          </button>
+        )}
+        {storedInventoryUnits.units.map((unit) => (
+          <button
+            type="button"
+            role="option"
+            aria-selected={value === unit}
+            key={unit}
+            onClick={() => setInventoryUnitValue(target, unit)}
+          >
+            {unit}
+          </button>
+        ))}
       </div>
-      {inventoryUnitMenu === target && (
-        <div className="inventory-unit-menu" role="listbox" aria-label={`واحدهای ${label}`}>
-          {allowEmpty && (
-            <button
-              type="button"
-              role="option"
-              aria-selected={!value}
-              onClick={() => setInventoryUnitValue(target, '')}
-            >
-              بدون واحد دوم
-            </button>
-          )}
-          {storedInventoryUnits.units.map((unit) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={value === unit}
-              key={unit}
-              onClick={() => setInventoryUnitValue(target, unit)}
-            >
-              {unit}
-            </button>
-          ))}
-        </div>
-      )}
+    )
 
-    </div>
-  )
+    return (
+      <div className="inventory-unit-selector">
+        <div className="inventory-unit-control">
+          <button
+            className="inventory-unit-select"
+            type="button"
+            aria-label={`انتخاب ${label}`}
+            aria-haspopup="listbox"
+            aria-expanded={inventoryUnitMenu === target}
+            onClick={(event) => {
+              if (inventoryUnitMenu === target) {
+                setInventoryUnitMenu(null)
+                setInventoryUnitMenuPosition(null)
+                return
+              }
+              const rect = event.currentTarget.getBoundingClientRect()
+              const spaceAbove = rect.top - 12
+              const spaceBelow = window.innerHeight - rect.bottom - 12
+              const openAbove = spaceAbove >= 150 || spaceAbove >= spaceBelow
+              const availableSpace = openAbove ? spaceAbove : spaceBelow
+              const maxHeight = Math.min(220, Math.max(80, availableSpace - 8))
+              const optionCount = storedInventoryUnits.units.length + Number(allowEmpty)
+              const contentHeight = optionCount * 42 + Math.max(0, optionCount - 1) * 4 + 16
+              const menuHeight = Math.min(maxHeight, contentHeight)
+              setInventoryUnitMenuPosition({
+                top: openAbove ? rect.top - menuHeight - 6 : rect.bottom + 6,
+                left: rect.left,
+                width: rect.width,
+                maxHeight,
+              })
+              setInventoryUnitMenu(target)
+            }}
+          >
+            <span>{value || (allowEmpty ? 'انتخاب واحد دوم' : 'انتخاب واحد')}</span>
+            <span className="dropdown-chevron inventory-unit-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <button
+            className="inventory-unit-add"
+            type="button"
+            aria-label={`افزودن واحد برای ${label}`}
+            title="افزودن واحد جدید"
+            onClick={() => {
+              setInventoryUnitFormTarget(target)
+              setInventoryUnitInput('')
+              setInventoryUnitError(storedInventoryUnits.error)
+              setInventoryUnitMenu(null)
+              setInventoryUnitMenuPosition(null)
+              setInventoryUnitFormOpen(true)
+            }}
+          >
+            +
+          </button>
+        </div>
+        {unitMenu && createPortal(unitMenu, document.body)}
+      </div>
+    )
+  }
 
   const saveInventoryUnit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -7289,26 +7353,8 @@ function App() {
     ))
     setInventoryStocktakeSearch('')
     setInventoryStocktakeError('')
-    setInventoryStocktakeWarehousesOpen(false)
     setInventoryWarehousesOpen(false)
     setInventoryStocktakeOpen(true)
-  }
-
-  const changeInventoryStocktakeWarehouse = (warehouse: string) => {
-    const warehouseItems = storedInventoryRecords.items.filter((item) => (
-      item.kind === inventoryKind
-      && (item.warehouse ?? (
-        inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
-      )) === warehouse
-    ))
-    setInventoryStocktakeCounts(Object.fromEntries(
-      warehouseItems.map((item) => [item.id, formatStocktakeQuantity(item.stock)]),
-    ))
-    if (inventoryKind === 'خدمات') setSelectedServiceWarehouse(warehouse)
-    else setSelectedWarehouse(warehouse)
-    setInventoryStocktakeSearch('')
-    setInventoryStocktakeError('')
-    setInventoryStocktakeWarehousesOpen(false)
   }
 
   const saveInventoryStocktake = () => {
@@ -7349,7 +7395,6 @@ function App() {
         persistInventoryChanges(inventoryOptions, nextItems)
       }
       setInventoryStocktakeOpen(false)
-      setInventoryStocktakeWarehousesOpen(false)
       setInventoryStocktakeError('')
       setNotice(`انبارگردانی ${inventoryKind} در «${activeWarehouse}» ثبت شد.`)
       window.setTimeout(() => setNotice(''), 2600)
@@ -11961,7 +12006,7 @@ function App() {
                             ? 'ثبت قلم فاکتور برگشت به خرید'
                             : purchaseInvoiceMode ? 'ثبت قلم فاکتور خرید' : 'ثبت قلم فاکتور فروش'}
                       </span>
-                      <h2 id="sales-invoice-picker-title">افزودن کالا</h2>
+                      <h2 id="sales-invoice-picker-title">افزودن کالا یا خدمات</h2>
                     </div>
                     <button
                       type="button"
@@ -11977,13 +12022,13 @@ function App() {
                   <div className="sales-invoice-item-form">
                     <div className="sales-invoice-item-search-row">
                       <label className="sales-invoice-form-field">
-                        <span>نام کالا:</span>
+                        <span>نام کالا یا خدمات:</span>
                         <div className="sales-invoice-item-search-control">
                           <input
                             autoFocus={salesInvoiceBarcodeMode}
                             aria-label={salesInvoiceBarcodeMode
-                              ? 'اسکن یا جست‌وجوی بارکد کالا'
-                              : 'جست‌وجو و انتخاب کالا'}
+                              ? 'اسکن یا جست‌وجوی بارکد، نام یا کد کالا و خدمات'
+                              : 'نام کالا یا خدمات'}
                             value={salesInvoiceItemSearch}
                             onFocus={() => setSalesInvoiceItemOptionsOpen(Boolean(salesInvoiceItemSearch.trim()))}
                             onChange={(event) => {
@@ -11997,15 +12042,18 @@ function App() {
                               setSalesInvoiceItemOptionsOpen(Boolean(event.target.value.trim()))
                               if (salesInvoiceBarcodeMode && event.target.value.trim()) {
                                 const scannedValue = event.target.value.trim()
-                                const matchedItem = inventoryItems.find((item) => (
-                                  item.barcode?.trim() === scannedValue || item.code?.trim() === scannedValue
+                                const normalizedScannedValue = normalizeInventorySearchText(scannedValue)
+                                const matchedItem = salesInvoicePickerItems.find((item) => (
+                                  [item.barcode, item.code]
+                                    .some((value) => value
+                                      && normalizeInventorySearchText(value.trim()) === normalizedScannedValue)
                                 ))
                                 if (matchedItem) selectSalesInvoiceItem(matchedItem)
                               }
                             }}
                             placeholder={salesInvoiceBarcodeMode
-                              ? 'بارکد را وارد یا با بارکدخوان اسکن کنید'
-                              : 'جست‌وجو...'}
+                              ? 'نام، کد یا بارکد کالا و خدمات را وارد یا اسکن کنید'
+                              : 'نام یا کد کالا یا خدمات را جست‌وجو کنید'}
                           />
                           <button
                             type="button"
@@ -12030,7 +12078,7 @@ function App() {
                         </div>
                       </label>
                       {salesInvoiceItemOptionsOpen && (
-                        <div className="sales-invoice-picker-list" role="listbox" aria-label="نتایج جست‌وجوی کالا">
+                        <div className="sales-invoice-picker-list" role="listbox" aria-label="نتایج جست‌وجوی کالا یا خدمات">
                           {filteredSalesInvoiceItems.map((item) => (
                             <button
                               key={item.id}
@@ -12309,7 +12357,7 @@ function App() {
                           <span aria-hidden="true">⌕</span>
                           <input
                             autoFocus
-                            aria-label="جست‌وجو در فهرست"
+                            aria-label={`نام یا کد ${salesInvoiceCatalogKind}`}
                             value={salesInvoiceCatalogSearch}
                             onChange={(event) => setSalesInvoiceCatalogSearch(event.target.value)}
                             placeholder={`جست‌وجوی نام، کد یا بارکد ${salesInvoiceCatalogKind}`}
@@ -12656,16 +12704,36 @@ function App() {
                         key={account.id}
                         {...accountActionPressHandlers}
                       >
-                        {accountActionTrigger}
-                        {accountActionMenu}
-                        <span className="account-card-icon cash" aria-hidden="true">▣</span>
-                        <div className="account-card-details">
-                          <span>صندوق</span>
-                          <strong>{account.name}</strong>
+                        <div className="account-cash-card-content">
+                          <div className="account-cash-card-top">
+                            <div className="account-cash-card-brand">
+                              <span className="account-cash-card-icon" aria-hidden="true">
+                                <svg viewBox="0 0 32 32" fill="none">
+                                  <rect x="4" y="9" width="23" height="16" rx="3" />
+                                  <path d="M7 12h2m13 10h2" />
+                                  <circle cx="15.5" cy="17" r="4" />
+                                  <path d="M22 6v8m-2.5-6h3a1.5 1.5 0 0 1 0 3h-2a1.5 1.5 0 0 0 0 3h3" />
+                                </svg>
+                              </span>
+                              <div className="account-cash-card-title">
+                                <strong>{account.name}</strong>
+                                <span>صندوق نقدی</span>
+                              </div>
+                            </div>
+                            <div className="account-cash-card-actions">
+                              {accountActionTrigger}
+                              {accountActionMenu}
+                            </div>
+                          </div>
+                          <div className="account-cash-card-balance">
+                            <span>موجودی صندوق</span>
+                            <strong>{formatPersonBalance(account.balance)} <small>ریال</small></strong>
+                          </div>
+                          <div className="account-cash-card-footer">
+                            <span>حساب نقدی</span>
+                            <span className="account-cash-card-status"><i aria-hidden="true" /> فعال</span>
+                          </div>
                         </div>
-                        <strong className="account-card-balance">
-                          {formatPersonBalance(account.balance)} <small>ریال</small>
-                        </strong>
                       </article>
                     )
                   })}
@@ -13566,7 +13634,6 @@ function App() {
                       aria-label="بازگشت به فهرست"
                       onClick={() => {
                         setInventoryStocktakeOpen(false)
-                        setInventoryStocktakeWarehousesOpen(false)
                       }}
                     >
                       <span aria-hidden="true">←</span>
@@ -13602,31 +13669,6 @@ function App() {
                         انتقال کالا بین انبارها
                       </button>
                     )}
-                    <div className="inventory-stocktake-warehouse-wrap">
-                      <button
-                        className="inventory-stocktake-warehouse"
-                        type="button"
-                        aria-expanded={inventoryStocktakeWarehousesOpen}
-                        onClick={() => setInventoryStocktakeWarehousesOpen(!inventoryStocktakeWarehousesOpen)}
-                      >
-                        <span>{activeWarehouse}</span>
-                        <span className="dropdown-chevron" aria-hidden="true">⌄</span>
-                      </button>
-                      {inventoryStocktakeWarehousesOpen && (
-                        <div className="inventory-stocktake-warehouse-menu" role="group" aria-label="انتخاب انبار">
-                          {activeWarehouseOptions.map((warehouse) => (
-                            <button
-                              key={warehouse}
-                              type="button"
-                              aria-pressed={warehouse === activeWarehouse}
-                              onClick={() => changeInventoryStocktakeWarehouse(warehouse)}
-                            >
-                              {warehouse}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   </div>
 
                   <label className="inventory-stocktake-search">
@@ -14707,7 +14749,29 @@ function App() {
                 showComingSoon(`فرم ثبت ${inventoryKind} در طراحی جداگانه آماده می‌شود.`)
               }}
             >
-              <span aria-hidden="true">+</span>
+              {inventoryKind === 'کالا' ? (
+                <svg className="inventory-add-icon inventory-add-icon--product" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                  <path className="inventory-box-body" d="m7 14 13 8 13-8v15l-13 7-13-7V14Z" />
+                  <path className="inventory-box-seam" d="M20 22v14M7 14l13 8 13-8" />
+                  <path className="inventory-box-lid-closed" d="m7 14 13-8 13 8-13 8-13-8Z" />
+                  <g className="inventory-box-lid-open">
+                    <path d="m7 14 1-9 12-3v12l-13 8v-8Z" />
+                    <path d="m20 14 12-9 1 9-13 8v-8Z" />
+                  </g>
+                </svg>
+              ) : inventoryKind === 'خدمات' ? (
+                <svg className="inventory-add-icon inventory-add-icon--service" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+                  <path d="M23.5 8.5a9.2 9.2 0 0 0-11.8 11.8L5.5 26.5a4.2 4.2 0 0 0 5.9 5.9l6.2-6.2a9.2 9.2 0 0 0 11.8-11.8l-5.8 5.8-5.9-5.9 5.8-5.8Z" />
+                  <path d="m16.2 23.8 4 4M31 5v5m-2.5-2.5h5" />
+                </svg>
+              ) : (
+                <svg className="inventory-add-icon inventory-add-icon--production" viewBox="0 0 40 40" aria-hidden="true">
+                  <text className="inventory-formula-main" x="19" y="26" textAnchor="middle">Σ</text>
+                  <text className="inventory-formula-symbol inventory-formula-symbol--plus" x="7" y="12">+</text>
+                  <text className="inventory-formula-symbol inventory-formula-symbol--multiply" x="28" y="13">×</text>
+                  <text className="inventory-formula-symbol inventory-formula-symbol--equals" x="29" y="34">=</text>
+                </svg>
+              )}
             </button>
             {inventoryProductOpen && (
               <div
@@ -14911,7 +14975,17 @@ function App() {
                         ? 'مشخصات و گروه‌بندی خدمات را به‌روزرسانی کنید.'
                         : 'شرح و قیمت خدمات را وارد کنید تا به فهرست انتخاب‌شده اضافه شود.'}</p>
                     </div>
-                    <span className="inventory-service-code-badge">کد {inventoryServiceFields.code}</span>
+                    <button
+                      className="inventory-service-close"
+                      type="button"
+                      aria-label="بستن پنجره"
+                      onClick={() => {
+                        setInventoryServiceOpen(false)
+                        setEditingInventoryServiceId(null)
+                      }}
+                    >
+                      ×
+                    </button>
                   </header>
                   <form className="inventory-service-form" onSubmit={saveInventoryService}>
                     <div className="inventory-service-fields">
@@ -15195,15 +15269,6 @@ function App() {
               <span className="intro-eyebrow">داشبورد مالی</span>
               <h1>گزارش‌ها</h1>
               <p>گزارش‌های مالی و عملکرد کسب‌وکارت</p>
-              <button
-                className="active-store-chip"
-                type="button"
-                onClick={() => setActiveTab('فروشگاه')}
-              >
-                <Icon name="shop" />
-                <span>{activeStore?.name ?? 'فروشگاهی انتخاب نشده'}</span>
-                <span className="active-store-action">تغییر</span>
-              </button>
             </section>
             <section className="content-section reports-page">
               <div className="section-heading">
