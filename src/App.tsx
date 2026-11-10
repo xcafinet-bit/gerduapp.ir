@@ -1232,6 +1232,8 @@ type InventoryTaxonomy = {
 type StoredInventoryOptions = InventoryTaxonomy & {
   warehouses: string[]
   warehouseTaxonomies?: Record<string, InventoryTaxonomy>
+  serviceWarehouses?: string[]
+  serviceTaxonomy?: InventoryTaxonomy
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -1270,6 +1272,8 @@ function isStoredInventoryOptions(value: unknown): value is StoredInventoryOptio
       || Array.isArray(value.warehouseTaxonomies)
       || !Object.values(value.warehouseTaxonomies).every(isInventoryTaxonomy)
     ))
+    || ('serviceWarehouses' in value && !isStringArray(value.serviceWarehouses))
+    || ('serviceTaxonomy' in value && !isInventoryTaxonomy(value.serviceTaxonomy))
   ) return false
 
   return true
@@ -1289,16 +1293,17 @@ type PeopleFilterDrag = {
 }
 
 type InventoryActionTarget =
-  | { type: 'warehouse'; name: string }
+  | { type: 'warehouse'; name: string; kind?: 'کالا' | 'خدمات' | 'تولید' }
   | { type: 'group'; name: string; kind: InventoryKind }
-  | { type: 'category'; name: string; group: string }
+  | { type: 'category'; name: string; group: string; kind: InventoryKind }
   | { type: 'product'; name: string; id: string }
+  | { type: 'service'; name: string; id: string }
 
 type InventoryActionItem = InventoryActionTarget & { x: number; y: number }
 
 type EditingInventoryTaxonomy =
   | { type: 'group'; name: string; kind: InventoryKind }
-  | { type: 'category'; name: string; group: string }
+  | { type: 'category'; name: string; group: string; kind: InventoryKind }
 
 function readStoredPeopleGroups(storeId: number | null = null): StoredPeopleGroups {
   try {
@@ -1493,6 +1498,7 @@ function readStoredInventoryUnits(storeId: number | null = null) {
 const INVENTORY_OPTIONS_STORAGE_KEY = 'trazino-inventory-options-v1'
 const INVENTORY_ITEMS_STORAGE_KEY = 'trazino-inventory-items-v1'
 const DEFAULT_INVENTORY_WAREHOUSE = 'انبار مرکزی'
+const DEFAULT_SERVICE_WAREHOUSE = 'انبار خدمات'
 const STORE_USERS_STORAGE_KEY = 'trazino-store-users-v1'
 const SECURITY_SETTINGS_STORAGE_KEY = 'gerdoo-security-settings-v1'
 const STORE_DATA_MIGRATION_KEY = 'trazino-store-data-owner-v1'
@@ -1746,8 +1752,27 @@ function isInventoryRecord(value: unknown): value is InventoryRecord {
       || (typeof item.conversionRatio === 'number' && Number.isFinite(item.conversionRatio)))
 }
 
-function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: string[]) {
+function synchronizeInventoryCatalog(
+  items: InventoryRecord[],
+  warehouses: string[],
+  serviceWarehouses: string[] = [DEFAULT_SERVICE_WAREHOUSE],
+) {
   const allWarehouses = [...new Set([DEFAULT_INVENTORY_WAREHOUSE, ...warehouses])]
+  const allServiceWarehouses = [...new Set([DEFAULT_SERVICE_WAREHOUSE, ...serviceWarehouses])]
+  const serviceItems: InventoryRecord[] = []
+  const warehouseItems: InventoryRecord[] = []
+  for (const item of items) {
+    if (item.kind !== 'خدمات') {
+      warehouseItems.push(item)
+      continue
+    }
+
+    const catalogId = item.catalogId ?? item.id
+    const warehouse = allServiceWarehouses.includes(item.warehouse ?? '')
+      ? item.warehouse!
+      : DEFAULT_SERVICE_WAREHOUSE
+    serviceItems.push({ ...item, catalogId, warehouse })
+  }
   const centralByIdentity = new Map<string, InventoryRecord[]>()
   const getIdentity = (item: InventoryRecord) => [
     item.kind,
@@ -1756,13 +1781,13 @@ function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: strin
     item.brand.trim().toLocaleLowerCase(),
     item.unit.trim().toLocaleLowerCase(),
   ].join('\u0000')
-  for (const item of items) {
+  for (const item of warehouseItems) {
     if ((item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) !== DEFAULT_INVENTORY_WAREHOUSE) continue
     const key = getIdentity(item)
     centralByIdentity.set(key, [...(centralByIdentity.get(key) ?? []), item])
   }
 
-  const catalogRecords = items.map((item) => {
+  const catalogRecords = warehouseItems.map((item) => {
     const warehouse = item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE
     const matches = item.catalogId || warehouse === DEFAULT_INVENTORY_WAREHOUSE
       ? []
@@ -1773,7 +1798,7 @@ function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: strin
       catalogId: item.catalogId ?? centralMatch?.catalogId ?? centralMatch?.id ?? item.id,
       warehouse,
     }
-  })
+  }).concat(serviceItems)
   const canonicalByCatalog = new Map<string, InventoryRecord>()
   for (const item of catalogRecords) {
     const catalogId = item.catalogId ?? item.id
@@ -1791,7 +1816,9 @@ function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: strin
       ...canonical,
       id: item.id,
       catalogId: item.catalogId ?? item.id,
-      warehouse: item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE,
+      warehouse: item.warehouse ?? (
+        item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+      ),
       stock: item.stock,
       lastMovementAt: item.lastMovementAt,
     }
@@ -1802,7 +1829,8 @@ function synchronizeInventoryCatalog(items: InventoryRecord[], warehouses: strin
   const existingIds = new Set(normalized.map((item) => item.id))
 
   for (const [catalogId, canonical] of canonicalByCatalog) {
-    for (const warehouse of allWarehouses) {
+    const catalogWarehouses = canonical.kind === 'خدمات' ? allServiceWarehouses : allWarehouses
+    for (const warehouse of catalogWarehouses) {
       const key = `${catalogId}\u0000${warehouse}`
       if (existingCatalogWarehouses.has(key)) continue
       let id = `${canonical.id}::${encodeURIComponent(warehouse)}`
@@ -1848,7 +1876,12 @@ function readStoredInventoryRecords(storeId: number | null = null): StoredInvent
     if (!Array.isArray(parsed) || !parsed.every(isInventoryRecord)) {
       throw new Error('Invalid inventory records')
     }
-    const items = synchronizeInventoryCatalog(parsed, readStoredInventoryOptions(storeId).warehouses)
+    const options = readStoredInventoryOptions(storeId)
+    const items = synchronizeInventoryCatalog(
+      parsed,
+      options.warehouses,
+      options.serviceWarehouses,
+    )
     if (JSON.stringify(items) !== JSON.stringify(parsed)) {
       try {
         localStorage.setItem(
@@ -1875,6 +1908,7 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
   const defaultGroupsByKind: Record<InventoryKind, string[]> = { کالا: [], خدمات: [], تولید: [] }
   const defaultCategoriesByGroup: Record<string, string[]> = {}
   const defaultWarehouses = [DEFAULT_INVENTORY_WAREHOUSE]
+  const defaultServiceWarehouses = [DEFAULT_SERVICE_WAREHOUSE]
   const defaultTaxonomy: InventoryTaxonomy = {
     groupsByKind: defaultGroupsByKind,
     categoriesByGroup: defaultCategoriesByGroup,
@@ -1885,6 +1919,8 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
       return {
         ...defaultTaxonomy,
         warehouses: defaultWarehouses,
+        serviceWarehouses: defaultServiceWarehouses,
+        serviceTaxonomy: defaultTaxonomy,
         warehouseTaxonomies: { [DEFAULT_INVENTORY_WAREHOUSE]: defaultTaxonomy },
       }
     }
@@ -1892,9 +1928,33 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
     const parsed: unknown = JSON.parse(raw)
     if (!isStoredInventoryOptions(parsed)) throw new Error('Invalid inventory options')
 
+    const serviceGroups = new Set(parsed.groupsByKind.خدمات ?? [])
+    for (const taxonomy of Object.values(parsed.warehouseTaxonomies ?? {})) {
+      for (const group of taxonomy.groupsByKind.خدمات ?? []) serviceGroups.add(group)
+    }
+    const serviceTaxonomySource = parsed.serviceTaxonomy ?? {
+      groupsByKind: {
+        ...defaultGroupsByKind,
+        خدمات: [...serviceGroups],
+      },
+      categoriesByGroup: Object.fromEntries([...serviceGroups].map((group) => [
+        group,
+        parsed.categoriesByGroup[group] ?? [],
+      ])),
+    }
+    const serviceTaxonomy: InventoryTaxonomy = {
+      groupsByKind: {
+        ...defaultGroupsByKind,
+        ...serviceTaxonomySource.groupsByKind,
+        کالا: [],
+        تولید: [],
+      },
+      categoriesByGroup: serviceTaxonomySource.categoriesByGroup,
+    }
     const groupsByKind = { ...defaultGroupsByKind }
     for (const [kind, groups] of Object.entries(parsed.groupsByKind)) {
       if (isInventoryKind(kind)) {
+        if (kind === 'خدمات') continue
         groupsByKind[kind] = [...new Set([
           ...groupsByKind[kind],
           ...groups.map((group) => group.trim()).filter(Boolean),
@@ -1920,7 +1980,7 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
         : []),
     ])]
     for (const taxonomy of Object.values(parsed.warehouseTaxonomies ?? {})) {
-      for (const kind of inventoryKinds) {
+      for (const kind of inventoryKinds.filter((itemKind) => itemKind !== 'خدمات')) {
         groupsByKind[kind] = [...new Set([
           ...groupsByKind[kind],
           ...taxonomy.groupsByKind[kind],
@@ -1935,9 +1995,17 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
     }
 
     const sharedTaxonomy = { groupsByKind, categoriesByGroup }
+    const serviceWarehouses = [...new Set([
+      ...defaultServiceWarehouses,
+      ...(parsed.serviceWarehouses ?? [])
+        .map((warehouse) => warehouse.trim())
+        .filter(Boolean),
+    ])]
     return {
       ...sharedTaxonomy,
       warehouses,
+      serviceWarehouses,
+      serviceTaxonomy,
       warehouseTaxonomies: Object.fromEntries(
         warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
       ),
@@ -1946,6 +2014,8 @@ function readStoredInventoryOptions(storeId: number | null = null): StoredInvent
     return {
       ...defaultTaxonomy,
       warehouses: defaultWarehouses,
+      serviceWarehouses: defaultServiceWarehouses,
+      serviceTaxonomy: defaultTaxonomy,
       warehouseTaxonomies: { [DEFAULT_INVENTORY_WAREHOUSE]: defaultTaxonomy },
     }
   }
@@ -1959,6 +2029,12 @@ const inventorySortOptions = [
   { value: 'stockAsc', label: 'موجودی کم' },
   { value: 'stockDesc', label: 'موجودی زیاد' },
   { value: 'lastMovement', label: 'آخرین ورود و خروج' },
+] as const
+
+const serviceSortOptions = [
+  { value: 'created', label: 'ایجاد خدمات' },
+  { value: 'name', label: 'نام خدمات' },
+  { value: 'salePrice', label: 'قیمت خدمات' },
 ] as const
 
 const emptyPersonForm: PersonFormFields = {
@@ -2220,6 +2296,7 @@ function App() {
   const accountCardNumberRefs = useRef<Array<HTMLInputElement | null>>([])
   const [inventoryKind, setInventoryKind] = useState<InventoryKind>('کالا')
   const [selectedWarehouse, setSelectedWarehouse] = useState(DEFAULT_INVENTORY_WAREHOUSE)
+  const [selectedServiceWarehouse, setSelectedServiceWarehouse] = useState(DEFAULT_SERVICE_WAREHOUSE)
   const [storedInventoryRecords, setStoredInventoryRecords] = useState(() => readStoredInventoryRecords(activeStoreId))
   const [inventoryProductOpen, setInventoryProductOpen] = useState(false)
   const [editingInventoryProductId, setEditingInventoryProductId] = useState<string | null>(null)
@@ -2227,6 +2304,7 @@ function App() {
   const [inventoryProductFields, setInventoryProductFields] = useState(emptyInventoryProductForm)
   const [inventoryProductError, setInventoryProductError] = useState('')
   const [inventoryServiceOpen, setInventoryServiceOpen] = useState(false)
+  const [editingInventoryServiceId, setEditingInventoryServiceId] = useState<string | null>(null)
   const [inventoryServiceFields, setInventoryServiceFields] = useState(emptyInventoryServiceForm)
   const [inventoryServiceError, setInventoryServiceError] = useState('')
   const [storedInventoryUnits, setStoredInventoryUnits] = useState(() => readStoredInventoryUnits(activeStoreId))
@@ -2248,6 +2326,7 @@ function App() {
   const [inventoryWarehouseInput, setInventoryWarehouseInput] = useState('')
   const [inventoryWarehouseError, setInventoryWarehouseError] = useState('')
   const [editingInventoryWarehouse, setEditingInventoryWarehouse] = useState<string | null>(null)
+  const [editingServiceWarehouse, setEditingServiceWarehouse] = useState<string | null>(null)
   const [inventorySearch, setInventorySearch] = useState('')
   const [inventorySort, setInventorySort] = useState<(typeof inventorySortOptions)[number]['value']>('created')
   const [inventoryToolbarMenu, setInventoryToolbarMenu] = useState<'sort' | 'more' | null>(null)
@@ -2513,13 +2592,32 @@ function App() {
       count: accountReportPeople.filter((person) => person.accountStatus === 'بستانکاران').length,
     },
   ]
-  const activeWarehouse = inventoryOptions.warehouses.includes(selectedWarehouse)
-    ? selectedWarehouse
-    : inventoryOptions.warehouses[0] ?? DEFAULT_INVENTORY_WAREHOUSE
-  const activeWarehouseTaxonomy: InventoryTaxonomy = inventoryOptions
+  const activeWarehouseOptions = inventoryKind === 'خدمات'
+    ? inventoryOptions.serviceWarehouses ?? [DEFAULT_SERVICE_WAREHOUSE]
+    : inventoryOptions.warehouses
+  const selectedActiveWarehouse = inventoryKind === 'خدمات'
+    ? selectedServiceWarehouse
+    : selectedWarehouse
+  const activeWarehouse = activeWarehouseOptions.includes(selectedActiveWarehouse)
+    ? selectedActiveWarehouse
+    : activeWarehouseOptions[0] ?? (
+      inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+    )
+  const activeWarehouseTaxonomy: InventoryTaxonomy = inventoryKind === 'خدمات'
+    ? inventoryOptions.serviceTaxonomy ?? {
+        groupsByKind: { کالا: [], خدمات: [], تولید: [] },
+        categoriesByGroup: {},
+      }
+    : inventoryOptions
   const inventoryGroups = activeWarehouseTaxonomy.groupsByKind[inventoryKind]
+  const inventoryServiceItems = storedInventoryRecords.items.filter(
+    (item) => item.kind === 'خدمات'
+      && (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === activeWarehouse,
+  )
   const inventoryItems = storedInventoryRecords.items.filter(
-    (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
+    (item) => item.kind === 'خدمات'
+      ? (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === activeWarehouse
+      : (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
   )
   const salesInvoiceEditingInvoice = salesInvoiceEditingId
     ? storedSalesInvoices.invoices.find((invoice) => invoice.id === salesInvoiceEditingId) ?? null
@@ -2585,20 +2683,23 @@ function App() {
   const filteredSalesInvoiceItems = inventoryItems
     .filter((item) => `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`
       .toLocaleLowerCase().includes(salesInvoiceItemSearch.trim().toLocaleLowerCase()))
+  const salesInvoiceCatalogTaxonomy = salesInvoiceCatalogKind === 'خدمات'
+    ? inventoryOptions.serviceTaxonomy ?? inventoryOptions
+    : inventoryOptions
   const salesInvoiceCatalogGroups = salesInvoiceCatalogKind
     ? [...new Set([
-      ...inventoryOptions.groupsByKind[salesInvoiceCatalogKind],
+      ...salesInvoiceCatalogTaxonomy.groupsByKind[salesInvoiceCatalogKind],
       ...inventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.group),
     ])]
     : []
   const salesInvoiceCatalogCategories = salesInvoiceCatalogKind
     ? salesInvoiceCatalogGroup === 'همه'
       ? [...new Set([
-        ...salesInvoiceCatalogGroups.flatMap((group) => inventoryOptions.categoriesByGroup[group] ?? []),
+        ...salesInvoiceCatalogGroups.flatMap((group) => salesInvoiceCatalogTaxonomy.categoriesByGroup[group] ?? []),
         ...inventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.category),
       ])]
       : [...new Set([
-        ...(inventoryOptions.categoriesByGroup[salesInvoiceCatalogGroup] ?? []),
+        ...(salesInvoiceCatalogTaxonomy.categoriesByGroup[salesInvoiceCatalogGroup] ?? []),
         ...inventoryItems
           .filter((item) => item.kind === salesInvoiceCatalogKind && item.group === salesInvoiceCatalogGroup)
           .map((item) => item.category),
@@ -2618,7 +2719,7 @@ function App() {
     : activeWarehouseTaxonomy.categoriesByGroup[inventoryGroup] ?? []
   const filteredInventory = inventoryItems
     .filter((item) => item.kind === inventoryKind)
-    .filter((item) => !inventoryNoStockOnly || item.stock <= 0)
+    .filter((item) => inventoryKind === 'خدمات' || !inventoryNoStockOnly || item.stock <= 0)
     .filter((item) => inventoryGroup === 'همه' || item.group === inventoryGroup)
     .filter((item) => inventoryCategory === 'همه' || item.category === inventoryCategory)
     .filter((item) => `${item.name} ${item.brand} ${item.group} ${item.category}`.includes(inventorySearch.trim()))
@@ -2631,12 +2732,15 @@ function App() {
       if (inventorySort === 'lastMovement') return second.lastMovementAt.localeCompare(first.lastMovementAt)
       return second.createdAt.localeCompare(first.createdAt)
     })
-  const inventoryShareGroups = inventoryOptions.groupsByKind[inventoryShareSetting.kind]
+  const inventoryShareTaxonomy = inventoryShareSetting.kind === 'خدمات'
+    ? inventoryOptions.serviceTaxonomy ?? inventoryOptions
+    : inventoryOptions
+  const inventoryShareGroups = inventoryShareTaxonomy.groupsByKind[inventoryShareSetting.kind]
   const inventoryShareCategories = inventoryShareSetting.scope === 'all'
-    ? [...new Set(Object.values(inventoryOptions.categoriesByGroup).flat())]
+    ? [...new Set(Object.values(inventoryShareTaxonomy.categoriesByGroup).flat())]
     : inventoryShareSetting.group === 'همه'
-    ? [...new Set(inventoryShareGroups.flatMap((group) => inventoryOptions.categoriesByGroup[group] ?? []))]
-    : inventoryOptions.categoriesByGroup[inventoryShareSetting.group] ?? []
+    ? [...new Set(inventoryShareGroups.flatMap((group) => inventoryShareTaxonomy.categoriesByGroup[group] ?? []))]
+    : inventoryShareTaxonomy.categoriesByGroup[inventoryShareSetting.group] ?? []
   const inventoryShareItems = inventoryItems
     .filter((item) => inventoryShareSetting.scope === 'all' || item.kind === inventoryShareSetting.kind)
     .filter((item) => inventoryShareSetting.scope !== 'group' || inventoryShareSetting.group === 'همه' || item.group === inventoryShareSetting.group)
@@ -3117,6 +3221,7 @@ function App() {
     setStoredInventoryUnits(readStoredInventoryUnits(storeId))
     setInventoryOptions(readStoredInventoryOptions(storeId))
     setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
+    setSelectedServiceWarehouse(DEFAULT_SERVICE_WAREHOUSE)
     setStoredPeopleState(readStoredPeople(storeId))
     setPeopleGroupState(readStoredPeopleGroups(storeId))
     setStoredStoreUsers(readStoredStoreUsers(storeId))
@@ -5903,20 +6008,19 @@ function App() {
       `<Cell><Data ss:Type="${type}">${xmlEscape(value)}</Data></Cell>`
     )
     const headers = inventoryKind === 'خدمات'
-      ? ['نام خدمات', 'نوع', 'گروه', 'دسته‌بندی', 'شرح', 'واحد', 'قیمت']
+      ? ['کد خدمات', 'شرح خدمات', 'گروه', 'دسته‌بندی', 'واحد', 'قیمت']
       : ['نام کالا', 'نوع', 'گروه', 'دسته‌بندی', 'برند', 'موجودی', 'واحد', 'قیمت خرید', 'قیمت فروش']
     const rows = [
       `<Row>${headers.map((header) => xmlCell(header)).join('')}</Row>`,
       ...filteredInventory.map((item) => (
         `<Row>${(item.kind === 'خدمات'
-          ? [
-              xmlCell(item.name),
-              xmlCell(item.kind),
-              xmlCell(item.group),
-              xmlCell(item.category),
-              xmlCell(item.brand),
-              xmlCell(item.unit),
-              xmlCell(item.salePrice, 'Number'),
+        ? [
+            xmlCell(item.code ?? ''),
+            xmlCell(item.name),
+            xmlCell(item.group),
+            xmlCell(item.category),
+            xmlCell(item.unit),
+            xmlCell(item.salePrice, 'Number'),
             ]
           : [
               xmlCell(item.name),
@@ -5931,16 +6035,19 @@ function App() {
             ]).join('')}</Row>`
       )),
     ]
-    const workbook = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="انبار"><Table>${rows.join('')}</Table></Worksheet></Workbook>`
+    const sheetName = inventoryKind === 'خدمات' ? 'خدمات' : 'انبار'
+    const workbook = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="${sheetName}"><Table>${rows.join('')}</Table></Worksheet></Workbook>`
     const url = URL.createObjectURL(new Blob([workbook], { type: 'application/vnd.ms-excel;charset=utf-8' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `trazino-inventory-${getIranDateValue(now)}.xls`
+    link.download = `trazino-${inventoryKind === 'خدمات' ? 'services' : 'inventory'}-${getIranDateValue(now)}.xls`
     document.body.appendChild(link)
     link.click()
     link.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setNotice('خروجی اکسل فهرست انبار آماده شد.')
+    setNotice(inventoryKind === 'خدمات'
+      ? 'خروجی اکسل فهرست خدمات آماده شد.'
+      : 'خروجی اکسل فهرست انبار آماده شد.')
     window.setTimeout(() => setNotice(''), 2600)
   }
 
@@ -6061,7 +6168,9 @@ function App() {
   }
 
   const openInventoryProductForm = () => {
-    const nextCode = Math.max(0, ...inventoryItems.map((item, index) => (
+    const nextCode = Math.max(0, ...inventoryItems
+      .filter((item) => item.kind !== 'خدمات')
+      .map((item, index) => (
       parsePersonCode(item.code ?? String(index + 1))
     ))) + 1
     setEditingInventoryProductId(null)
@@ -6171,7 +6280,11 @@ function App() {
           }
           return [...storedInventoryRecords.items, item]
         })()
-    const items = synchronizeInventoryCatalog(nextRecords, inventoryOptions.warehouses)
+    const items = synchronizeInventoryCatalog(
+      nextRecords,
+      inventoryOptions.warehouses,
+      inventoryOptions.serviceWarehouses,
+    )
     try {
       persistInventoryChanges(inventoryOptions, items)
       setInventoryProductOpen(false)
@@ -6184,9 +6297,10 @@ function App() {
   }
 
   const openInventoryServiceForm = () => {
-    const nextCode = Math.max(0, ...inventoryItems.map((item, index) => (
+    const nextCode = Math.max(0, ...inventoryServiceItems.map((item, index) => (
       parsePersonCode(item.code ?? String(index + 1))
     ))) + 1
+    setEditingInventoryServiceId(null)
     setInventoryServiceFields({
       ...emptyInventoryServiceForm,
       code: formatPersonCode(nextCode),
@@ -6223,36 +6337,54 @@ function App() {
       ? inventoryCategory
       : activeWarehouseTaxonomy.categoriesByGroup[selectedGroup]?.[0] ?? 'بدون دسته‌بندی'
     const createdAt = new Date().toISOString()
-    const catalogId = `item-${Date.now()}`
-    const item: InventoryRecord = {
-      id: catalogId,
-      catalogId,
+    const editedItem = editingInventoryServiceId
+      ? inventoryServiceItems.find((item) => item.id === editingInventoryServiceId)
+      : undefined
+    if (editingInventoryServiceId && !editedItem) {
+      setInventoryServiceError('خدمت موردنظر برای ویرایش پیدا نشد.')
+      return
+    }
+    const sharedFields: Pick<InventoryRecord,
+      'code' | 'name' | 'group' | 'category' | 'brand' | 'unit' | 'salePrice'
+    > = {
       code: inventoryServiceFields.code,
       name: description,
-      createdAt,
-      lastMovementAt: createdAt,
       group: selectedGroup,
       category: selectedCategory,
-      kind: 'خدمات',
       brand: 'خدمات',
       unit: inventoryServiceFields.unit.trim(),
-      stock: 0,
-      purchasePrice: 0,
       salePrice: price,
-      warehouse: activeWarehouse,
     }
+    const nextRecords = editedItem
+      ? storedInventoryRecords.items.map((item) =>
+          (item.catalogId ?? item.id) === (editedItem.catalogId ?? editedItem.id)
+            ? { ...item, ...sharedFields }
+            : item)
+      : (() => {
+          const catalogId = `service-${Date.now()}`
+          const item: InventoryRecord = {
+            id: catalogId,
+            catalogId,
+            ...sharedFields,
+            createdAt,
+            lastMovementAt: createdAt,
+            kind: 'خدمات',
+            stock: 0,
+            purchasePrice: 0,
+            warehouse: activeWarehouse,
+          }
+          return [...storedInventoryRecords.items, item]
+        })()
     const items = synchronizeInventoryCatalog(
-      [...storedInventoryRecords.items, item],
+      nextRecords,
       inventoryOptions.warehouses,
+      inventoryOptions.serviceWarehouses,
     )
     try {
-      localStorage.setItem(
-        getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId),
-        JSON.stringify(items),
-      )
-      setStoredInventoryRecords({ items, error: '' })
+      persistInventoryChanges(inventoryOptions, items)
       setInventoryServiceOpen(false)
-      setNotice('خدمت جدید به فهرست اضافه شد.')
+      setEditingInventoryServiceId(null)
+      setNotice(editedItem ? 'تغییرات خدمات ذخیره شد.' : 'خدمت جدید به فهرست اضافه شد.')
       window.setTimeout(() => setNotice(''), 2600)
     } catch {
       setInventoryServiceError('ذخیرهٔ خدمات انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
@@ -6590,7 +6722,8 @@ function App() {
   const startInventoryActionPress = (event: ReactPointerEvent<HTMLElement>, item: InventoryActionTarget) => {
     clearInventoryActionPressTimer()
     suppressInventoryActionClick.current = false
-    if (item.type === 'warehouse' && item.name === DEFAULT_INVENTORY_WAREHOUSE) return
+    if (item.type === 'warehouse'
+      && item.name === (item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE)) return
     if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
     if ((event.target as Element).closest('.inventory-action-trigger')) return
     const { clientX, clientY } = event
@@ -6721,7 +6854,8 @@ function App() {
         }
       }
       nextItems = storedInventoryRecords.items.map((item) =>
-        item.group === edit.group
+        item.kind === edit.kind
+        && item.group === edit.group
         && item.category === edit.name
           ? { ...item, category: value }
           : item)
@@ -6745,13 +6879,15 @@ function App() {
         },
       }
     }
-    const nextOptions: StoredInventoryOptions = {
-      ...inventoryOptions,
-      ...nextTaxonomy,
-      warehouseTaxonomies: Object.fromEntries(
-        inventoryOptions.warehouses.map((warehouse) => [warehouse, nextTaxonomy]),
-      ),
-    }
+    const nextOptions: StoredInventoryOptions = inventoryKind === 'خدمات'
+      ? { ...inventoryOptions, serviceTaxonomy: nextTaxonomy }
+      : {
+          ...inventoryOptions,
+          ...nextTaxonomy,
+          warehouseTaxonomies: Object.fromEntries(
+            inventoryOptions.warehouses.map((warehouse) => [warehouse, nextTaxonomy]),
+          ),
+        }
     try {
       persistInventoryChanges(nextOptions, nextItems)
       if (edit?.type === 'group' && inventoryGroup === edit.name) {
@@ -6781,46 +6917,59 @@ function App() {
       setInventoryWarehouseError('نام انبار را وارد کنید.')
       return
     }
-    if (inventoryOptions.warehouses.some((warehouse) =>
+    const isServiceWarehouse = inventoryKind === 'خدمات'
+    const currentWarehouses = isServiceWarehouse
+      ? inventoryOptions.serviceWarehouses ?? [DEFAULT_SERVICE_WAREHOUSE]
+      : inventoryOptions.warehouses
+    const editingWarehouse = isServiceWarehouse ? editingServiceWarehouse : editingInventoryWarehouse
+    if (currentWarehouses.some((warehouse) =>
       warehouse.toLocaleLowerCase() === name.toLocaleLowerCase()
-      && warehouse !== editingInventoryWarehouse
+      && warehouse !== editingWarehouse
     )) {
       setInventoryWarehouseError('این انبار از قبل ثبت شده است.')
       return
     }
 
-    const isEditing = editingInventoryWarehouse !== null
+    const isEditing = editingWarehouse !== null
     const warehouses = isEditing
-      ? inventoryOptions.warehouses.map((warehouse) =>
-          warehouse === editingInventoryWarehouse ? name : warehouse)
-      : [...inventoryOptions.warehouses, name]
-    const sharedTaxonomy: InventoryTaxonomy = inventoryOptions
-    const nextOptions: StoredInventoryOptions = {
-      ...inventoryOptions,
-      warehouses,
-      warehouseTaxonomies: Object.fromEntries(
-        warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
-      ),
-    }
+      ? currentWarehouses.map((warehouse) => warehouse === editingWarehouse ? name : warehouse)
+      : [...currentWarehouses, name]
+    const nextOptions: StoredInventoryOptions = isServiceWarehouse
+      ? { ...inventoryOptions, serviceWarehouses: warehouses }
+      : {
+          ...inventoryOptions,
+          warehouses,
+          warehouseTaxonomies: Object.fromEntries(
+            warehouses.map((warehouse) => [warehouse, inventoryOptions]),
+          ),
+        }
+    const defaultWarehouse = isServiceWarehouse ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
     const renamedItems = isEditing
       ? storedInventoryRecords.items.map((item) =>
-          (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === editingInventoryWarehouse
+          item.kind === (isServiceWarehouse ? 'خدمات' : inventoryKind)
+          && (item.warehouse ?? defaultWarehouse) === editingWarehouse
             ? { ...item, warehouse: name }
             : item)
       : storedInventoryRecords.items
     const nextItems = synchronizeInventoryCatalog(
       renamedItems,
       nextOptions.warehouses,
+      nextOptions.serviceWarehouses,
     )
     try {
       persistInventoryChanges(nextOptions, nextItems)
-      setSelectedWarehouse(name)
+      if (isServiceWarehouse) {
+        setSelectedServiceWarehouse(name)
+        setEditingServiceWarehouse(null)
+      } else {
+        setSelectedWarehouse(name)
+        setEditingInventoryWarehouse(null)
+      }
       setInventoryGroup('همه')
       setInventoryCategory('همه')
       setInventorySearch('')
       setInventoryWarehouseInput('')
       setInventoryWarehouseError('')
-      setEditingInventoryWarehouse(null)
       setInventoryWarehouseFormOpen(false)
       setInventoryWarehousesOpen(false)
     } catch {
@@ -6834,7 +6983,8 @@ function App() {
 
     if (action === 'edit') {
       if (target.type === 'warehouse') {
-        setEditingInventoryWarehouse(target.name)
+        if (target.kind === 'خدمات') setEditingServiceWarehouse(target.name)
+        else setEditingInventoryWarehouse(target.name)
         setInventoryWarehouseInput(target.name)
         setInventoryWarehouseError('')
         setInventoryWarehousesOpen(false)
@@ -6862,11 +7012,27 @@ function App() {
         setInventoryProductTab('basic')
         setInventoryProductError('')
         setInventoryProductOpen(true)
+      } else if (target.type === 'service') {
+        const item = inventoryServiceItems.find((candidate) => candidate.id === target.id)
+        if (!item) {
+          setNotice('خدمت موردنظر برای ویرایش پیدا نشد.')
+          setInventoryActionItem(null)
+          return
+        }
+        setEditingInventoryServiceId(item.id)
+        setInventoryServiceFields({
+          code: item.code ?? '',
+          description: item.name,
+          price: formatAccountBalanceInput(String(item.salePrice)),
+          unit: item.unit,
+        })
+        setInventoryServiceError('')
+        setInventoryServiceOpen(true)
       } else {
         setEditingInventoryTaxonomy(
           target.type === 'group'
             ? { type: 'group', name: target.name, kind: target.kind }
-            : { type: 'category', name: target.name, group: target.group },
+            : { type: 'category', name: target.name, group: target.group, kind: target.kind },
         )
         setInventoryTaxonomyForm(target.type)
         setInventoryTaxonomyInput(target.name)
@@ -6876,13 +7042,14 @@ function App() {
       return
     }
 
-    if (target.type === 'warehouse' && target.name === DEFAULT_INVENTORY_WAREHOUSE) return
+    if (target.type === 'warehouse'
+      && target.name === (target.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE)) return
 
     try {
       let nextOptions = inventoryOptions
       let nextItems = storedInventoryRecords.items
 
-      if (target.type === 'product') {
+      if (target.type === 'product' || target.type === 'service') {
         const item = inventoryItems.find((candidate) => candidate.id === target.id)
         if (!item) {
           setNotice('کالای موردنظر برای حذف پیدا نشد.')
@@ -6893,19 +7060,36 @@ function App() {
         nextItems = storedInventoryRecords.items.filter(
           (candidate) => (candidate.catalogId ?? candidate.id) !== catalogId,
         )
+      } else if (target.type === 'warehouse' && target.kind === 'خدمات') {
+        const serviceWarehouses = (inventoryOptions.serviceWarehouses ?? [DEFAULT_SERVICE_WAREHOUSE])
+          .filter((warehouse) => warehouse !== target.name)
+        const defaultCatalogs = new Set(storedInventoryRecords.items
+          .filter((item) => item.kind === 'خدمات'
+            && (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === DEFAULT_SERVICE_WAREHOUSE)
+          .map((item) => item.catalogId ?? item.id))
+        nextItems = storedInventoryRecords.items.flatMap((item) => {
+          if (item.kind !== 'خدمات' || item.warehouse !== target.name) return [item]
+          if (defaultCatalogs.has(item.catalogId ?? item.id)) return []
+          return [{ ...item, warehouse: DEFAULT_SERVICE_WAREHOUSE }]
+        })
+        nextOptions = { ...inventoryOptions, serviceWarehouses }
+        nextItems = synchronizeInventoryCatalog(nextItems, nextOptions.warehouses, serviceWarehouses)
       } else if (target.type === 'warehouse') {
         const warehouses = inventoryOptions.warehouses.filter((warehouse) => warehouse !== target.name)
         const centralItems = storedInventoryRecords.items.filter(
-          (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === DEFAULT_INVENTORY_WAREHOUSE,
+          (item) => item.kind !== 'خدمات'
+            && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === DEFAULT_INVENTORY_WAREHOUSE,
         )
         const centralIndexByCatalog = new Map(
           centralItems.map((item, index) => [item.catalogId ?? item.id, index]),
         )
         nextItems = storedInventoryRecords.items.filter(
-          (item) => (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) !== target.name,
+          (item) => item.kind === 'خدمات'
+            || (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) !== target.name,
         )
         for (const item of storedInventoryRecords.items.filter(
-          (candidate) => (candidate.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === target.name,
+          (candidate) => candidate.kind !== 'خدمات'
+            && (candidate.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === target.name,
         )) {
           const centralIndex = centralIndexByCatalog.get(item.catalogId ?? item.id)
           if (centralIndex === undefined) {
@@ -6935,8 +7119,11 @@ function App() {
             warehouses.map((warehouse) => [warehouse, sharedTaxonomy]),
           ),
         }
+        nextItems = synchronizeInventoryCatalog(nextItems, warehouses, nextOptions.serviceWarehouses)
       } else {
-        let taxonomy = activeWarehouseTaxonomy
+        let taxonomy = target.kind === 'خدمات'
+          ? inventoryOptions.serviceTaxonomy ?? activeWarehouseTaxonomy
+          : inventoryOptions
         if (target.type === 'group') {
           const categoriesByGroup = { ...taxonomy.categoriesByGroup }
           const groupsByKind = {
@@ -6947,13 +7134,15 @@ function App() {
             delete categoriesByGroup[target.name]
           }
           taxonomy = { ...taxonomy, groupsByKind, categoriesByGroup }
-          nextOptions = {
-            ...inventoryOptions,
-            ...taxonomy,
-            warehouseTaxonomies: Object.fromEntries(
-              inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
-            ),
-          }
+          nextOptions = target.kind === 'خدمات'
+            ? { ...inventoryOptions, serviceTaxonomy: taxonomy }
+            : {
+                ...inventoryOptions,
+                ...taxonomy,
+                warehouseTaxonomies: Object.fromEntries(
+                  inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
+                ),
+              }
           nextItems = storedInventoryRecords.items.map((item) =>
             item.kind === target.kind
             && item.group === target.name
@@ -6973,14 +7162,19 @@ function App() {
             },
           }
           nextOptions = {
-            ...inventoryOptions,
-            ...taxonomy,
-            warehouseTaxonomies: Object.fromEntries(
-              inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
-            ),
+            ...(target.kind === 'خدمات'
+              ? { ...inventoryOptions, serviceTaxonomy: taxonomy }
+              : {
+                  ...inventoryOptions,
+                  ...taxonomy,
+                  warehouseTaxonomies: Object.fromEntries(
+                    inventoryOptions.warehouses.map((warehouse) => [warehouse, taxonomy]),
+                  ),
+                }),
           }
           nextItems = storedInventoryRecords.items.map((item) =>
-            item.group === target.group
+            item.kind === target.kind
+            && item.group === target.group
             && item.category === target.name
               ? { ...item, category: 'بدون دسته‌بندی' }
               : item)
@@ -6989,11 +7183,19 @@ function App() {
       }
 
       persistInventoryChanges(nextOptions, nextItems)
-      if (target.type === 'product') {
-        setNotice('کالا از فهرست همهٔ انبارها حذف شد.')
+      if (target.type === 'product' || target.type === 'service') {
+        setNotice(target.type === 'service'
+          ? 'خدمت از فهرست خدمات حذف شد.'
+          : 'کالا از فهرست همهٔ انبارها حذف شد.')
       }
       if (target.type === 'warehouse') {
-        if (selectedWarehouse === target.name) {
+        if (target.kind === 'خدمات') {
+          if (selectedServiceWarehouse === target.name) {
+            setSelectedServiceWarehouse(DEFAULT_SERVICE_WAREHOUSE)
+            setInventoryGroup('همه')
+            setInventoryCategory('همه')
+          }
+        } else if (selectedWarehouse === target.name) {
           setSelectedWarehouse(DEFAULT_INVENTORY_WAREHOUSE)
           setInventoryGroup('همه')
           setInventoryCategory('همه')
@@ -12431,7 +12633,10 @@ function App() {
               </div>
             </section>
 
-            <section className="inventory-list-section" aria-label="مدیریت فهرست انبار">
+            <section
+              className="inventory-list-section"
+              aria-label={inventoryKind === 'خدمات' ? 'مدیریت فهرست خدمات' : 'مدیریت فهرست انبار'}
+            >
               <div className="people-list-heading inventory-list-heading">
                 <div>
                   <h2>فهرست {inventoryKind}</h2>
@@ -12444,6 +12649,7 @@ function App() {
                     aria-controls="inventory-warehouses-panel"
                     onClick={() => {
                       setInventoryWarehouseFormOpen(false)
+                      setEditingServiceWarehouse(null)
                       setInventoryWarehousesOpen(!inventoryWarehousesOpen)
                     }}
                   >
@@ -12461,6 +12667,7 @@ function App() {
                       setInventoryWarehousesOpen(false)
                       setInventoryWarehouseFormOpen(true)
                       setEditingInventoryWarehouse(null)
+                      setEditingServiceWarehouse(null)
                       setInventoryWarehouseInput('')
                       setInventoryWarehouseError('')
                     }}
@@ -12470,11 +12677,11 @@ function App() {
                 </div>
               </div>
               {inventoryWarehousesOpen && (
-                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label="مدیریت انبارها">
+                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label={inventoryKind === 'خدمات' ? 'مدیریت انبارهای خدمات' : 'مدیریت انبارها'}>
                   <div className="inventory-warehouses-heading">
                     <div>
-                      <strong>انتخاب انبار</strong>
-                      <span>{formatPersonBalance(inventoryOptions.warehouses.length)} انبار ثبت‌شده</span>
+                      <strong>{inventoryKind === 'خدمات' ? 'انتخاب انبار خدمات' : 'انتخاب انبار'}</strong>
+                      <span>{formatPersonBalance(activeWarehouseOptions.length)} انبار ثبت‌شده</span>
                     </div>
                     <button
                       type="button"
@@ -12496,11 +12703,11 @@ function App() {
                       <Icon name="check" />
                       انبارگردانی
                     </button>
-                    {inventoryOptions.warehouses.map((warehouse) => (
+                    {activeWarehouseOptions.map((warehouse) => (
                       <span
                         className="inventory-action-chip-wrap"
                         key={warehouse}
-                        onPointerDown={(event) => startInventoryActionPress(event, { type: 'warehouse', name: warehouse })}
+                        onPointerDown={(event) => startInventoryActionPress(event, { type: 'warehouse', name: warehouse, ...(inventoryKind === 'خدمات' ? { kind: 'خدمات' as const } : {}) })}
                         onPointerMove={moveInventoryActionPress}
                         onPointerUp={clearInventoryActionPressTimer}
                         onPointerCancel={clearInventoryActionPressTimer}
@@ -12515,7 +12722,8 @@ function App() {
                               event.preventDefault()
                               return
                             }
-                            setSelectedWarehouse(warehouse)
+                            if (inventoryKind === 'خدمات') setSelectedServiceWarehouse(warehouse)
+                            else setSelectedWarehouse(warehouse)
                             setInventoryGroup('همه')
                             setInventoryCategory('همه')
                             setInventorySearch('')
@@ -12525,13 +12733,13 @@ function App() {
                           <Icon name="shop" />
                           {warehouse}
                         </button>
-                        {warehouse !== DEFAULT_INVENTORY_WAREHOUSE && (
+                        {warehouse !== (inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE) && (
                           <button
                             className="inventory-action-trigger"
                             type="button"
                             aria-label={`گزینه‌های انبار ${warehouse}`}
                             title={`گزینه‌های انبار ${warehouse}`}
-                            onClick={(event) => activateInventoryActionItem(event, { type: 'warehouse', name: warehouse })}
+                            onClick={(event) => activateInventoryActionItem(event, { type: 'warehouse', name: warehouse, ...(inventoryKind === 'خدمات' ? { kind: 'خدمات' as const } : {}) })}
                           >
                             <span aria-hidden="true">⋮</span>
                           </button>
@@ -12542,11 +12750,13 @@ function App() {
                 </section>
               )}
               {inventoryWarehouseFormOpen && (
-                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label="افزودن انبار">
+                <section className="inventory-warehouses-panel" id="inventory-warehouses-panel" aria-label={inventoryKind === 'خدمات' ? 'مدیریت انبار خدمات' : 'افزودن انبار'}>
                   <div className="inventory-warehouses-heading">
                     <div>
-                      <strong>{editingInventoryWarehouse ? 'ویرایش انبار' : 'افزودن انبار جدید'}</strong>
-                      <span>پس از افزودن، انبار جدید به‌صورت خودکار انتخاب می‌شود.</span>
+                      <strong>{(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'ویرایش انبار' : 'افزودن انبار جدید'}</strong>
+                      <span>{inventoryKind === 'خدمات'
+                        ? 'این انبار فقط برای فهرست خدمات استفاده می‌شود.'
+                        : 'پس از افزودن، انبار جدید به‌صورت خودکار انتخاب می‌شود.'}</span>
                     </div>
                     <button
                       type="button"
@@ -12554,6 +12764,7 @@ function App() {
                       onClick={() => {
                         setInventoryWarehouseFormOpen(false)
                         setEditingInventoryWarehouse(null)
+                        setEditingServiceWarehouse(null)
                         setInventoryWarehouseError('')
                       }}
                     >
@@ -12569,14 +12780,15 @@ function App() {
                         setInventoryWarehouseInput(event.target.value)
                         setInventoryWarehouseError('')
                       }}
-                      placeholder={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
-                      aria-label={editingInventoryWarehouse ? 'نام جدید انبار' : 'نام انبار جدید'}
+                      placeholder={(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'نام جدید انبار' : 'نام انبار جدید'}
+                      aria-label={(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'نام جدید انبار' : 'نام انبار جدید'}
                       aria-invalid={Boolean(inventoryWarehouseError)}
                     />
-                    <button type="submit">{editingInventoryWarehouse ? 'ذخیره' : 'افزودن انبار'}</button>
+                    <button type="submit">{(inventoryKind === 'خدمات' ? editingServiceWarehouse : editingInventoryWarehouse) ? 'ذخیره' : 'افزودن انبار'}</button>
                     <button className="inventory-warehouse-cancel" type="button" onClick={() => {
                       setInventoryWarehouseFormOpen(false)
                       setEditingInventoryWarehouse(null)
+                      setEditingServiceWarehouse(null)
                       setInventoryWarehouseError('')
                     }}>
                       انصراف
@@ -12602,6 +12814,11 @@ function App() {
                         setInventoryKind(kind)
                         setInventoryGroup('همه')
                         setInventoryCategory('همه')
+                        setInventoryTaxonomyForm(null)
+                        setEditingInventoryTaxonomy(null)
+                        setInventoryActionItem(null)
+                        setInventoryWarehousesOpen(false)
+                        setInventoryWarehouseFormOpen(false)
                       }}
                     >
                       {kind}
@@ -12611,7 +12828,7 @@ function App() {
               </section>
 
               <section className="inventory-category-section" aria-label="گروه‌های کالا">
-                <span className="inventory-category-label">گروه کالا</span>
+                <span className="inventory-category-label">{inventoryKind === 'خدمات' ? 'گروه خدمات' : 'گروه کالا'}</span>
                 <div
                   className="inventory-category-list"
                   ref={inventoryGroupsRef}
@@ -12725,8 +12942,8 @@ function App() {
                 )}
               </section>
 
-              <section className="inventory-category-section inventory-secondary-categories" aria-label="دسته‌بندی گروه">
-                <span className="inventory-category-label">دسته‌بندی گروه</span>
+              <section className="inventory-category-section inventory-secondary-categories" aria-label={inventoryKind === 'خدمات' ? 'دسته‌بندی خدمات' : 'دسته‌بندی گروه'}>
+                <span className="inventory-category-label">{inventoryKind === 'خدمات' ? 'دسته‌بندی خدمات' : 'دسته‌بندی گروه'}</span>
                 <div
                   className="inventory-category-list"
                   ref={inventoryCategoriesRef}
@@ -12773,7 +12990,7 @@ function App() {
                     <span
                       className="inventory-action-chip-wrap"
                       key={category}
-                      onPointerDown={(event) => startInventoryActionPress(event, { type: 'category', name: category, group: inventoryGroup })}
+                      onPointerDown={(event) => startInventoryActionPress(event, { type: 'category', name: category, group: inventoryGroup, kind: inventoryKind })}
                       onPointerMove={moveInventoryActionPress}
                       onPointerUp={clearInventoryActionPressTimer}
                       onPointerCancel={clearInventoryActionPressTimer}
@@ -12798,7 +13015,7 @@ function App() {
                         type="button"
                         aria-label={`گزینه‌های دسته‌بندی ${category}`}
                         title={`گزینه‌های دسته‌بندی ${category}`}
-                        onClick={(event) => activateInventoryActionItem(event, { type: 'category', name: category, group: inventoryGroup })}
+                        onClick={(event) => activateInventoryActionItem(event, { type: 'category', name: category, group: inventoryGroup, kind: inventoryKind })}
                       >
                         <span aria-hidden="true">⋮</span>
                       </button>
@@ -12840,7 +13057,7 @@ function App() {
                 <div
                   className="inventory-action-menu"
                   role="menu"
-                  aria-label={`عملیات ${inventoryActionItem.type === 'warehouse' ? 'انبار' : inventoryActionItem.type === 'group' ? 'گروه' : inventoryActionItem.type === 'category' ? 'دسته‌بندی' : 'کالا'} ${inventoryActionItem.name}`}
+                  aria-label={`عملیات ${inventoryActionItem.type === 'warehouse' ? 'انبار' : inventoryActionItem.type === 'group' ? 'گروه' : inventoryActionItem.type === 'category' ? 'دسته‌بندی' : inventoryActionItem.type === 'service' ? 'خدمت' : 'کالا'} ${inventoryActionItem.name}`}
                   style={{ left: inventoryActionItem.x, top: inventoryActionItem.y }}
                 >
                   <span className="inventory-action-menu-title">{inventoryActionItem.name}</span>
@@ -12867,7 +13084,7 @@ function App() {
                   <button
                     className="inventory-action sort"
                     type="button"
-                    aria-label="مرتب‌سازی کالاها"
+                    aria-label={inventoryKind === 'خدمات' ? 'مرتب‌سازی خدمات' : 'مرتب‌سازی کالاها'}
                     aria-expanded={inventoryToolbarMenu === 'sort'}
                     onClick={() => setInventoryToolbarMenu(inventoryToolbarMenu === 'sort' ? null : 'sort')}
                   >
@@ -12876,8 +13093,8 @@ function App() {
                   <button
                     className="inventory-action reports"
                     type="button"
-                    aria-label="گزارشات کالا و انبار"
-                    onClick={() => showComingSoon('گزارشات کالا و انبار')}
+                    aria-label={inventoryKind === 'خدمات' ? 'گزارشات خدمات' : 'گزارشات کالا و انبار'}
+                    onClick={() => showComingSoon(inventoryKind === 'خدمات' ? 'گزارشات خدمات' : 'گزارشات کالا و انبار')}
                   >
                     <PeopleToolbarIcon name="chart" />
                   </button>
@@ -12885,7 +13102,7 @@ function App() {
                   {inventoryToolbarMenu && (
                     <div className="inventory-toolbar-menu" role="menu">
                       {inventoryToolbarMenu === 'sort' ? (
-                        inventorySortOptions.map((option) => (
+                        (inventoryKind === 'خدمات' ? serviceSortOptions : inventorySortOptions).map((option) => (
                           <button
                             key={option.value}
                             type="button"
@@ -12902,27 +13119,31 @@ function App() {
                         ))
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            role="menuitemcheckbox"
-                            aria-checked={inventoryNoStockOnly}
-                            onClick={() => {
-                              setInventoryNoStockOnly(!inventoryNoStockOnly)
-                            }}
-                          >
-                            <span className="people-sort-radio" aria-hidden="true"><span /></span>
-                            نمایش کالاهای بدون موجودی
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setInventoryToolbarMenu(null)
-                              setInventoryShareOpen(true)
-                            }}
-                          >
-                            ارسال لیست کالاهای انبار
-                          </button>
+                          {inventoryKind !== 'خدمات' && (
+                            <>
+                              <button
+                                type="button"
+                                role="menuitemcheckbox"
+                                aria-checked={inventoryNoStockOnly}
+                                onClick={() => {
+                                  setInventoryNoStockOnly(!inventoryNoStockOnly)
+                                }}
+                              >
+                                <span className="people-sort-radio" aria-hidden="true"><span /></span>
+                                نمایش کالاهای بدون موجودی
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setInventoryToolbarMenu(null)
+                                  setInventoryShareOpen(true)
+                                }}
+                              >
+                                ارسال لیست کالاهای انبار
+                              </button>
+                            </>
+                          )}
                           <button
                             type="button"
                             role="menuitem"
@@ -12931,7 +13152,7 @@ function App() {
                               downloadInventoryExcel()
                             }}
                           >
-                            خروجی اکسل از انبار
+                            {inventoryKind === 'خدمات' ? 'خروجی اکسل از فهرست خدمات' : 'خروجی اکسل از انبار'}
                           </button>
                         </>
                       )}
@@ -12948,7 +13169,7 @@ function App() {
                     value={inventorySearch}
                     onChange={(event) => setInventorySearch(event.target.value)}
                     placeholder="جست‌وجو..."
-                    aria-label="جست‌وجو در کالا و انبار"
+                    aria-label={inventoryKind === 'خدمات' ? 'جست‌وجو در خدمات' : 'جست‌وجو در کالا و انبار'}
                   />
                 </label>
               </div>
@@ -12958,13 +13179,17 @@ function App() {
                   <article
                     className="inventory-item"
                     key={item.id}
-                    onContextMenu={item.kind === 'کالا' ? (event) => event.preventDefault() : undefined}
-                    onPointerDown={item.kind === 'کالا'
-                      ? (event) => startInventoryActionPress(event, { type: 'product', name: item.name, id: item.id })
+                    onContextMenu={item.kind !== 'تولید' ? (event) => event.preventDefault() : undefined}
+                    onPointerDown={item.kind !== 'تولید'
+                      ? (event) => startInventoryActionPress(event, {
+                          type: item.kind === 'خدمات' ? 'service' : 'product',
+                          name: item.name,
+                          id: item.id,
+                        })
                       : undefined}
-                    onPointerMove={item.kind === 'کالا' ? moveInventoryActionPress : undefined}
-                    onPointerUp={item.kind === 'کالا' ? clearInventoryActionPressTimer : undefined}
-                    onPointerCancel={item.kind === 'کالا' ? clearInventoryActionPressTimer : undefined}
+                    onPointerMove={item.kind !== 'تولید' ? moveInventoryActionPress : undefined}
+                    onPointerUp={item.kind !== 'تولید' ? clearInventoryActionPressTimer : undefined}
+                    onPointerCancel={item.kind !== 'تولید' ? clearInventoryActionPressTimer : undefined}
                   >
                     <div className={`inventory-item-prices${item.kind === 'خدمات' ? ' service' : ''}`}>
                       {item.kind !== 'خدمات' && (
@@ -12978,15 +13203,16 @@ function App() {
                         <span className="inventory-price-tag sale">{formatPersonBalance(item.salePrice)} <small>ریال</small></span>
                       </div>
                     </div>
-                    {item.kind === 'کالا' && (
+                    {item.kind !== 'تولید' && (
                       <button
                         className="inventory-item-menu-trigger inventory-action-trigger"
                         type="button"
-                        aria-label={`عملیات کالای ${item.name}`}
+                        aria-label={`عملیات ${item.kind === 'خدمات' ? 'خدمت' : 'کالای'} ${item.name}`}
                         aria-haspopup="menu"
-                        aria-expanded={inventoryActionItem?.type === 'product' && inventoryActionItem.id === item.id}
+                        aria-expanded={(inventoryActionItem?.type === 'product' || inventoryActionItem?.type === 'service')
+                          && inventoryActionItem.id === item.id}
                         onClick={(event) => activateInventoryActionItem(event, {
-                          type: 'product',
+                          type: item.kind === 'خدمات' ? 'service' : 'product',
                           name: item.name,
                           id: item.id,
                         })}
@@ -12996,7 +13222,7 @@ function App() {
                     )}
                     <div className="inventory-item-copy">
                       <h2>{item.name}</h2>
-                      {item.kind === 'کالا' && item.code && (
+                      {item.code && (
                         <small className="inventory-item-code">کد: {item.code}</small>
                       )}
                       <p>{item.brand}</p>
@@ -13008,8 +13234,10 @@ function App() {
                 {filteredInventory.length === 0 && (
                   <div className="inventory-empty">
                     <Icon name="inventory" />
-                    <strong>موردی پیدا نشد</strong>
-                    <span>جست‌وجو یا گروه انتخابی را تغییر دهید.</span>
+                    <strong>{inventoryKind === 'خدمات' ? 'خدمتی ثبت نشده است' : 'موردی پیدا نشد'}</strong>
+                    <span>{inventoryKind === 'خدمات'
+                      ? 'برای شروع، خدمت جدید را ثبت کنید.'
+                      : 'جست‌وجو یا گروه انتخابی را تغییر دهید.'}</span>
                   </div>
                 )}
               </section>
@@ -13230,9 +13458,11 @@ function App() {
                 >
                   <header className="inventory-service-heading">
                     <div className="inventory-service-title-block">
-                      <span className="inventory-service-eyebrow">مدیریت خدمات <span>•</span> انبار</span>
-                      <h2 id="inventory-service-title">معرفی خدمات جدید</h2>
-                      <p>شرح و قیمت خدمات را وارد کنید تا به فهرست اضافه شود.</p>
+                      <span className="inventory-service-eyebrow">مدیریت خدمات <span>•</span> فهرست مستقل</span>
+                      <h2 id="inventory-service-title">{editingInventoryServiceId ? 'ویرایش خدمات' : 'معرفی خدمات جدید'}</h2>
+                      <p>{editingInventoryServiceId
+                        ? 'مشخصات و گروه‌بندی خدمات را به‌روزرسانی کنید.'
+                        : 'شرح و قیمت خدمات را وارد کنید تا به فهرست انتخاب‌شده اضافه شود.'}</p>
                     </div>
                     <span className="inventory-service-code-badge">کد {inventoryServiceFields.code}</span>
                   </header>
@@ -13271,8 +13501,11 @@ function App() {
                     </div>
                     {inventoryServiceError && <p className="inventory-service-error" role="alert">{inventoryServiceError}</p>}
                     <footer className="inventory-service-actions">
-                      <button type="button" onClick={() => setInventoryServiceOpen(false)}>لغو</button>
-                      <button type="submit">تایید و افزودن خدمات</button>
+                      <button type="button" onClick={() => {
+                        setInventoryServiceOpen(false)
+                        setEditingInventoryServiceId(null)
+                      }}>لغو</button>
+                      <button type="submit">{editingInventoryServiceId ? 'ذخیره تغییرات' : 'تایید و افزودن خدمات'}</button>
                     </footer>
                   </form>
                 </section>
