@@ -3358,6 +3358,14 @@
   padding: 12px 0;
   direction: rtl;
   border-bottom: 1px solid #d5e0e5;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.inventory-item:hover,
+.inventory-item:focus-visible {
+  background: var(--app-color-tint);
+  outline: 0;
 }
 
 .inventory-item-copy {
@@ -8354,6 +8362,978 @@ button:focus-visible {
 .inventory-stocktake-button .icon-art {
   width: 17px;
   height: 17px;
+}
+
+.inventory-stocktake-page {
+  position: fixed;
+  z-index: 120;
+  top: 0;
+  right: 50%;
+  bottom: 0;
+  width: min(100%, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(50%);
+  color: var(--app-color-ink);
+  background: var(--app-color-page);
+}
+
+.inventory-stocktake-header {
+  flex: 0 0 auto;
+  padding: max(34px, env(safe-area-inset-top)) 22px 23px;
+  color: #fff;
+  background:
+    radial-gradient(ellipse at 2% 110%, rgba(var(--app-color-accent-rgb), .45) 0, transparent 48%),
+    linear-gradient(118deg, var(--app-color-navy), var(--app-color-mid) 65%, var(--app-color-deep));
+}
+
+.inventory-stocktake-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  direction: ltr;
+}
+
+.inventory-stocktake-title-row > div {
+  min-width: 0;
+  text-align: right;
+}
+
+.inventory-stocktake-step {
+  display: block;
+  margin-bottom: 5px;
+  color: #ffffffa8;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.inventory-stocktake-title-row h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 850;
+}
+
+.inventory-stocktake-title-row > button {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inventory-stocktake-title-row > button:hover,
+.inventory-stocktake-title-row > button:focus-visible {
+  background: #ffffff20;
+  outline: 0;
+}
+
+.inventory-stocktake-header > p {
+  margin: 12px 0 0;
+  color: #ffffffd1;
+  font-size: 12px;
+  line-height: 1.8;
+  text-align: right;
+}
+
+.inventory-stocktake-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 17px 18px calc(24px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+}
+
+.inventory-warehouse-stats-page {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--app-color-ink);
+  background: var(--app-color-page);
+}
+
+.inventory-warehouse-stats-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 17px 18px calc(24px + env(safe-area-inset-bottom));
+  overscroll-behavior: contain;
+}
+
+.inventory-warehouse-stats-search {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 13px;
+  color: var(--app-color-accent);
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 15px;
+}
+
+.inventory-warehouse-stats-search svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.inventory-warehouse-stats-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  color: var(--app-color-ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.inventory-warehouse-stats-search:focus-within {
+  border-color: var(--app-color-bright);
+  box-shadow: 0 0 0 3px rgba(var(--app-color-accent-rgb), .12);
+}
+
+.inventory-warehouse-stats-summary {
+  margin: 15px 2px 10px;
+  color: var(--app-color-mid);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.inventory-warehouse-stats-list {
+  display: grid;
+  gap: 11px;
+}
+
+.inventory-warehouse-stats-card {
+  overflow: hidden;
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 16px;
+  box-shadow: 0 5px 16px rgba(var(--app-color-accent-rgb), .06);
+}
+
+.inventory-warehouse-stats-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  background: var(--app-color-tint);
+}
+
+.inventory-warehouse-stats-card > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-warehouse-stats-card > header strong {
+  overflow: hidden;
+  color: var(--app-color-ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+
+.inventory-warehouse-stats-card > header span,
+.inventory-warehouse-stats-card > header > small {
+  color: var(--app-color-mid);
+  font-size: 10px;
+}
+
+.inventory-warehouse-stats-card > header > small {
+  flex: 0 0 auto;
+  text-align: left;
+}
+
+.inventory-warehouse-stats-card ul {
+  display: grid;
+  margin: 0;
+  padding: 4px 15px;
+  list-style: none;
+}
+
+.inventory-warehouse-stats-card li {
+  min-height: 41px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--app-color-border);
+  font-size: 11px;
+}
+
+.inventory-warehouse-stats-card li:last-child {
+  border-bottom: 0;
+}
+
+.inventory-warehouse-stats-card li > span {
+  color: var(--app-color-mid);
+}
+
+.inventory-warehouse-stats-card li > strong {
+  color: var(--app-color-ink);
+  font-size: 12px;
+  direction: ltr;
+  text-align: left;
+}
+
+.inventory-stocktake-toolbar {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 19px;
+  direction: rtl;
+}
+
+.inventory-stocktake-toolbar .inventory-stocktake-warehouse-wrap {
+  flex: 1 0 100%;
+  order: 2;
+  margin-bottom: 0;
+}
+
+.inventory-stocktake-transfer-button {
+  min-width: 0;
+  flex: 1 1 calc(50% - 5px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 13px;
+  color: #fff;
+  background: linear-gradient(120deg, var(--app-color-accent), var(--app-color-deep));
+  border: 1px solid var(--app-color-accent);
+  border-radius: 17px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: filter 150ms ease, transform 150ms ease;
+}
+
+.inventory-warehouse-stats-button {
+  order: 0;
+}
+
+.inventory-stocktake-toolbar > .inventory-stocktake-transfer-button:not(.inventory-warehouse-stats-button) {
+  order: 1;
+}
+
+.inventory-stocktake-transfer-button:hover,
+.inventory-stocktake-transfer-button:focus-visible {
+  filter: brightness(1.08);
+  outline: 0;
+}
+
+.inventory-stocktake-transfer-button:disabled {
+  opacity: .52;
+  cursor: not-allowed;
+}
+
+.inventory-stocktake-transfer-button > span {
+  flex: 0 0 auto;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.inventory-stocktake-warehouse-wrap {
+  position: relative;
+}
+
+.inventory-stocktake-warehouse {
+  width: 100%;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px;
+  color: var(--app-color-ink);
+  background: var(--app-color-tint);
+  border: 1px solid var(--app-color-border);
+  border-radius: 21px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  text-align: right;
+  cursor: pointer;
+}
+
+.inventory-stocktake-warehouse > span:last-child {
+  color: var(--app-color-accent);
+  font-size: 20px;
+}
+
+.inventory-stocktake-warehouse-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 15px;
+  box-shadow: 0 8px 22px #172a2420;
+}
+
+.inventory-stocktake-warehouse-menu button {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  color: var(--app-color-ink);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.inventory-stocktake-warehouse-menu button[aria-pressed='true'] {
+  color: var(--app-color-accent);
+  background: var(--app-color-tint);
+  font-weight: 800;
+}
+
+.inventory-stocktake-search {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: 7px;
+}
+
+.inventory-stocktake-search > svg {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.inventory-stocktake-search input {
+  width: 100%;
+  min-width: 0;
+  color: var(--app-color-ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 14px;
+  text-align: right;
+}
+
+.inventory-stocktake-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 17px 1px 12px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.inventory-stocktake-no-difference {
+  color: var(--app-color-accent);
+}
+
+.inventory-stocktake-has-difference {
+  color: #c45d5d;
+}
+
+.inventory-stocktake-list {
+  display: grid;
+  gap: 12px;
+}
+
+.inventory-stocktake-card {
+  display: grid;
+  gap: 12px;
+  padding: 17px 16px 15px;
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 22px;
+  box-shadow: 0 2px 6px #24324908;
+}
+
+.inventory-stocktake-card-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  direction: rtl;
+}
+
+.inventory-stocktake-card-heading strong {
+  min-width: 0;
+  color: var(--app-color-ink);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.inventory-stocktake-card-heading span {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--app-color-ink) 62%, transparent);
+  font-size: 10px;
+}
+
+.inventory-stocktake-card-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  direction: rtl;
+}
+
+.inventory-stocktake-system,
+.inventory-stocktake-count {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  text-align: center;
+}
+
+.inventory-stocktake-system > span,
+.inventory-stocktake-count > label {
+  color: color-mix(in srgb, var(--app-color-ink) 62%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inventory-stocktake-system > strong {
+  color: var(--app-color-ink);
+  font-size: 16px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.inventory-stocktake-count-controls {
+  width: min(100%, 270px);
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: 17px;
+  direction: ltr;
+}
+
+.inventory-stocktake-count-controls button {
+  width: 30px;
+  height: 30px;
+  justify-self: center;
+  color: var(--app-color-accent);
+  background: transparent;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inventory-stocktake-count-controls button:last-child {
+  color: #d35f6e;
+}
+
+.inventory-stocktake-count-controls input {
+  width: 100%;
+  min-width: 0;
+  color: var(--app-color-ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.inventory-stocktake-status {
+  justify-self: end;
+  color: var(--app-color-accent);
+  font-size: 10px;
+  font-weight: 700;
+  direction: rtl;
+}
+
+.inventory-stocktake-status.has-difference {
+  color: #bd5b5b;
+}
+
+.inventory-stocktake-empty {
+  padding: 42px 18px;
+  color: color-mix(in srgb, var(--app-color-ink) 62%, transparent);
+  font-size: 13px;
+  line-height: 1.8;
+  text-align: center;
+}
+
+.inventory-stocktake-footer {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px max(18px, env(safe-area-inset-bottom));
+  background: var(--app-color-surface);
+  box-shadow: 0 -7px 20px #202d3b0d;
+}
+
+.inventory-stocktake-footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--app-color-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-stocktake-footer > div strong {
+  white-space: nowrap;
+}
+
+.inventory-stocktake-footer > p {
+  margin: 0;
+  color: #b54848;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.inventory-stocktake-footer > button {
+  width: 100%;
+  min-height: 66px;
+  color: #fff;
+  background: linear-gradient(120deg, var(--app-color-accent), var(--app-color-deep));
+  border: 0;
+  border-radius: 40px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.inventory-stocktake-footer > button:hover,
+.inventory-stocktake-footer > button:focus-visible {
+  background: linear-gradient(120deg, var(--app-color-bright), var(--app-color-accent));
+  outline: 0;
+}
+
+.inventory-stocktake-footer > button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.inventory-transfer-backdrop {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  overflow: auto;
+  padding: 20px;
+  background: rgba(5, 15, 20, .58);
+  backdrop-filter: blur(5px);
+}
+
+.inventory-transfer-dialog {
+  width: min(100%, 440px);
+  display: grid;
+  gap: 20px;
+  padding: 21px;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 23px;
+  box-shadow: 0 22px 60px #00000032;
+}
+
+.inventory-transfer-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-transfer-dialog > header > div {
+  display: grid;
+  gap: 5px;
+}
+
+.inventory-transfer-dialog > header span {
+  color: var(--app-color-accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.inventory-transfer-dialog > header h2 {
+  margin: 0;
+  color: var(--app-color-ink);
+  font-size: 17px;
+}
+
+.inventory-transfer-dialog > header > button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  color: var(--app-color-ink);
+  background: var(--app-color-tint);
+  border: 1px solid var(--app-color-border);
+  border-radius: 11px;
+  font: inherit;
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.inventory-transfer-fields {
+  display: grid;
+  gap: 13px;
+}
+
+.inventory-transfer-fields label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--app-color-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.inventory-transfer-fields select,
+.inventory-transfer-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 45px;
+  padding: 8px 11px;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.inventory-transfer-fields select:focus,
+.inventory-transfer-fields input:focus {
+  border-color: var(--app-color-bright);
+  outline: 2px solid rgba(var(--app-color-accent-rgb), .18);
+}
+
+.inventory-transfer-fields option {
+  color: var(--app-color-ink);
+  background: var(--app-color-surface-raised);
+}
+
+.inventory-transfer-dialog > p {
+  margin: -8px 0 0;
+  color: #c45d5d;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.inventory-transfer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.inventory-transfer-actions button {
+  min-height: 45px;
+  padding: 8px 12px;
+  color: var(--app-color-ink);
+  background: var(--app-color-tint);
+  border: 1px solid var(--app-color-border);
+  border-radius: 13px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inventory-transfer-actions button[type='submit'] {
+  color: #fff;
+  background: linear-gradient(120deg, var(--app-color-accent), var(--app-color-deep));
+  border-color: var(--app-color-accent);
+}
+
+.inventory-transfer-actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.inventory-detail-backdrop {
+  position: fixed;
+  z-index: 150;
+  inset: 0;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  overflow: auto;
+  padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
+  background: rgba(5, 15, 20, .58);
+  backdrop-filter: blur(5px);
+}
+
+.inventory-detail-dialog {
+  width: min(100%, 590px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--app-color-ink);
+  background: var(--app-color-surface-raised);
+  border: 1px solid var(--app-color-border);
+  border-radius: 22px;
+  box-shadow: 0 22px 60px #00000032;
+}
+
+.inventory-detail-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 19px 14px;
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.inventory-detail-header > div {
+  min-width: 0;
+}
+
+.inventory-detail-header span {
+  color: var(--app-color-accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.inventory-detail-header h2 {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: var(--app-color-ink);
+  font-size: 17px;
+  text-overflow: ellipsis;
+}
+
+.inventory-detail-header > button {
+  width: 35px;
+  height: 35px;
+  flex: 0 0 auto;
+  color: var(--app-color-ink);
+  background: var(--app-color-tint);
+  border: 1px solid var(--app-color-border);
+  border-radius: 11px;
+  font: inherit;
+  font-size: 23px;
+  cursor: pointer;
+}
+
+.inventory-detail-header > button:focus-visible {
+  outline: 2px solid var(--app-color-bright);
+  outline-offset: 2px;
+}
+
+.inventory-detail-properties {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 15px 19px;
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.inventory-detail-properties > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-detail-properties dt {
+  color: var(--app-color-mid);
+  font-size: 10px;
+}
+
+.inventory-detail-properties dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--app-color-ink);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.inventory-detail-history {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inventory-detail-history-heading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 19px 9px;
+}
+
+.inventory-detail-history-heading h3 {
+  margin: 0;
+  color: var(--app-color-ink);
+  font-size: 12px;
+}
+
+.inventory-detail-history-heading span {
+  color: var(--app-color-mid);
+  font-size: 10px;
+}
+
+.inventory-detail-history ol {
+  overflow: auto;
+  margin: 0;
+  padding: 0 19px 12px;
+  list-style: none;
+}
+
+.inventory-detail-movement {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--app-color-border);
+}
+
+.inventory-detail-movement:last-child {
+  border-bottom: 0;
+}
+
+.inventory-detail-movement-mark {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  display: grid;
+  place-items: center;
+  color: var(--app-color-accent);
+  background: var(--app-color-tint);
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.inventory-detail-movement.out .inventory-detail-movement-mark {
+  color: #c65e5e;
+  background: rgba(198, 94, 94, .12);
+}
+
+.inventory-detail-movement-main,
+.inventory-detail-movement-value {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-detail-movement-main {
+  flex: 1 1 auto;
+}
+
+.inventory-detail-movement-value {
+  flex: 0 0 auto;
+  text-align: left;
+}
+
+.inventory-detail-movement-main strong,
+.inventory-detail-movement-value strong {
+  color: var(--app-color-ink);
+  font-size: 10px;
+}
+
+.inventory-detail-movement-main span,
+.inventory-detail-movement-value span {
+  color: var(--app-color-mid);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.inventory-detail-history-empty {
+  margin: 0;
+  padding: 18px 19px 22px;
+  color: var(--app-color-mid);
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 430px) {
+  .inventory-stocktake-toolbar {
+    gap: 7px;
+  }
+
+  .inventory-stocktake-transfer-button {
+    flex-basis: calc(50% - 4px);
+    gap: 5px;
+    padding: 8px;
+    font-size: 11px;
+  }
+
+  .inventory-warehouse-stats-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .inventory-stocktake-warehouse {
+    min-height: 68px;
+    gap: 5px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .inventory-detail-properties {
+    gap: 8px;
+    padding: 13px 15px;
+  }
+
+  .inventory-detail-header,
+  .inventory-detail-history-heading {
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+
+  .inventory-detail-history ol {
+    padding-right: 15px;
+    padding-left: 15px;
+  }
 }
 
 .inventory-warehouse-form {
@@ -13874,7 +14854,8 @@ button:focus-visible {
   font-weight: 600;
 }
 
-.sales-invoice-form-field input {
+.sales-invoice-form-field input,
+.sales-invoice-form-field select {
   width: 100%;
   min-height: 42px;
   padding: 0 11px;
@@ -13887,7 +14868,8 @@ button:focus-visible {
   font-size: 11px;
 }
 
-.sales-invoice-form-field input:focus {
+.sales-invoice-form-field input:focus,
+.sales-invoice-form-field select:focus {
   border-color: #57aa91;
   box-shadow: 0 0 0 3px rgba(var(--app-color-accent-rgb), 0.09);
 }
@@ -14422,6 +15404,7 @@ button:focus-visible {
 }
 
 .app-frame[data-theme='dark'] .sales-invoice-form-field input,
+.app-frame[data-theme='dark'] .sales-invoice-form-field select,
 .app-frame[data-theme='dark'] .sales-invoice-form-actions button:not(.confirm),
 .app-frame[data-theme='dark'] .sales-invoice-item-calculation,
 .app-frame[data-theme='dark'] .sales-invoice-item-selected > button {
@@ -15379,22 +16362,26 @@ button:focus-visible {
 }
 
 .sales-invoice-lines table:not(.without-discount) th:first-child {
-  width: 32%;
+  width: 26%;
 }
 
 .sales-invoice-lines table:not(.without-discount) th:nth-child(2) {
-  width: 20%;
-}
-
-.sales-invoice-lines table:not(.without-discount) th:nth-child(3) {
-  width: 18%;
-}
-
-.sales-invoice-lines table:not(.without-discount) th:nth-child(4) {
   width: 17%;
 }
 
+.sales-invoice-lines table:not(.without-discount) th:nth-child(3) {
+  width: 14%;
+}
+
+.sales-invoice-lines table:not(.without-discount) th:nth-child(4) {
+  width: 15%;
+}
+
 .sales-invoice-lines table:not(.without-discount) th:nth-child(5) {
+  width: 13%;
+}
+
+.sales-invoice-lines table:not(.without-discount) th:nth-child(6) {
   width: 15%;
 }
 
@@ -15409,7 +16396,7 @@ button:focus-visible {
 }
 
 .sales-invoice-lines table.without-discount th:first-child {
-  width: 38%;
+  width: 30%;
 }
 
 .sales-invoice-lines table.without-discount th:nth-child(2) {
@@ -15417,17 +16404,36 @@ button:focus-visible {
 }
 
 .sales-invoice-lines table.without-discount th:nth-child(3) {
-  width: 22%;
+  width: 16%;
 }
 
 .sales-invoice-lines table.without-discount th:nth-child(4) {
-  width: 20%;
+  width: 18%;
+}
+
+.sales-invoice-lines table.without-discount th:nth-child(5) {
+  width: 16%;
 }
 
 .sales-invoice-lines th:first-child,
 .sales-invoice-lines td:first-child {
   padding-right: 22px;
   text-align: right;
+}
+
+.sales-invoice-lines table {
+  min-width: 640px;
+}
+
+.sales-invoice-line-warehouse {
+  overflow: hidden;
+  color: #647d77 !important;
+  font-size: 9px !important;
+  text-overflow: ellipsis;
+}
+
+.app-frame[data-theme='dark'] .sales-invoice-line-warehouse {
+  color: #a9bfba !important;
 }
 
 .sales-invoice-lines td:not(:first-child) input {

@@ -715,6 +715,7 @@ function emptyAccountTransferForm(accounts: AccountRecord[] = []) {
 type SalesInvoiceLine = {
   id: string
   itemId: string
+  warehouse?: string
   quantity: number
   discount: number
   unitPrice?: number
@@ -723,6 +724,7 @@ type SalesInvoiceLine = {
 
 type SavedSalesInvoiceLine = {
   itemId: string
+  warehouse?: string
   description: string
   kind: InventoryKind
   unit: string
@@ -808,6 +810,82 @@ type StoredSalesInvoices = {
 type StoredPurchaseInvoices = {
   invoices: SavedSalesInvoice[]
   error: string
+}
+
+function getInventoryItemActivity(
+  item: InventoryRecord,
+  salesInvoices: SavedSalesInvoice[],
+  purchaseInvoices: SavedSalesInvoice[],
+): InventoryDetailMovement[] {
+  const activity: InventoryDetailMovement[] = []
+  for (const invoice of purchaseInvoices) {
+    for (const [index, line] of invoice.lines.entries()) {
+      if (line.itemId !== item.id) continue
+      activity.push({
+        id: `${invoice.id}-${line.itemId}-${index}-purchase`,
+        source: 'invoice',
+        direction: item.kind === 'خدمات' ? 'info' : 'in',
+        label: item.kind === 'خدمات' ? 'ثبت خدمات در فاکتور خرید' : 'ورود از خرید',
+        date: invoice.date,
+        calendar: invoice.calendar,
+        createdAt: invoice.createdAt,
+        number: invoice.number,
+        party: invoice.buyerName,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPrice: line.unitPrice,
+        total: line.total,
+        warehouse: line.warehouse ?? item.warehouse,
+      })
+    }
+  }
+  for (const invoice of salesInvoices) {
+    for (const [index, line] of invoice.lines.entries()) {
+      if (line.itemId !== item.id) continue
+      activity.push({
+        id: `${invoice.id}-${line.itemId}-${index}-sale`,
+        source: 'invoice',
+        direction: item.kind === 'خدمات' ? 'info' : 'out',
+        label: item.kind === 'خدمات' ? 'ارائهٔ خدمات در فاکتور فروش' : 'خروج از فروش',
+        date: invoice.date,
+        calendar: invoice.calendar,
+        createdAt: invoice.createdAt,
+        number: invoice.number,
+        party: invoice.buyerName,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitPrice: line.unitPrice,
+        total: line.total,
+        warehouse: line.warehouse ?? item.warehouse,
+      })
+    }
+  }
+  for (const movement of item.stockMovements ?? []) {
+    const isIn = movement.kind === 'opening'
+      || movement.kind === 'count-in'
+      || movement.kind === 'transfer-in'
+    activity.push({
+      id: movement.id,
+      source: 'stock',
+      direction: isIn ? 'in' : 'out',
+      label: movement.kind === 'opening'
+        ? 'موجودی اولیه'
+        : movement.kind === 'count-in'
+          ? 'افزایش بر اساس انبارگردانی'
+          : movement.kind === 'count-out'
+            ? 'کاهش بر اساس انبارگردانی'
+            : movement.kind === 'transfer-in'
+              ? `انتقال از ${movement.warehouse ?? 'انبار دیگر'}`
+              : `انتقال به ${movement.warehouse ?? 'انبار دیگر'}`,
+      date: movement.createdAt.slice(0, 10),
+      calendar: 'persian',
+      createdAt: movement.createdAt,
+      quantity: movement.quantity,
+      unit: item.unit,
+      warehouse: item.warehouse,
+    })
+  }
+  return activity.sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
 }
 
 type MoneyDocumentKind = 'دریافت' | 'پرداخت' | 'هزینه' | 'درآمد'
@@ -936,6 +1014,7 @@ function isSavedSalesInvoice(value: unknown): value is SavedSalesInvoice {
       if (!line || typeof line !== 'object') return false
       const record = line as Record<string, unknown>
       return typeof record.itemId === 'string'
+        && (record.warehouse === undefined || typeof record.warehouse === 'string')
         && typeof record.description === 'string'
         && isInventoryKind(String(record.kind))
         && typeof record.unit === 'string'
@@ -1159,6 +1238,7 @@ type InventoryRecord = {
   id: string
   catalogId?: string
   warehouse?: string
+  stockMovements?: InventoryStockMovement[]
   code?: string
   name: string
   createdAt: string
@@ -1174,6 +1254,31 @@ type InventoryRecord = {
   barcode?: string
   secondaryUnit?: string
   conversionRatio?: number
+}
+
+type InventoryStockMovement = {
+  id: string
+  kind: 'opening' | 'count-in' | 'count-out' | 'transfer-in' | 'transfer-out'
+  quantity: number
+  createdAt: string
+  warehouse?: string
+}
+
+type InventoryDetailMovement = {
+  id: string
+  source: 'invoice' | 'stock'
+  direction: 'in' | 'out' | 'info'
+  label: string
+  date: string
+  calendar: CalendarSystem
+  createdAt: string
+  number?: string
+  party?: string
+  quantity: number
+  unit: string
+  unitPrice?: number
+  total?: number
+  warehouse?: string
 }
 
 type InventoryProductFormFields = {
@@ -1750,6 +1855,21 @@ function isInventoryRecord(value: unknown): value is InventoryRecord {
     && (item.secondaryUnit === undefined || typeof item.secondaryUnit === 'string')
     && (item.conversionRatio === undefined
       || (typeof item.conversionRatio === 'number' && Number.isFinite(item.conversionRatio)))
+    && (item.stockMovements === undefined
+      || (Array.isArray(item.stockMovements) && item.stockMovements.every(isInventoryStockMovement)))
+}
+
+function isInventoryStockMovement(value: unknown): value is InventoryStockMovement {
+  if (!value || typeof value !== 'object') return false
+  const movement = value as Record<string, unknown>
+  return typeof movement.id === 'string'
+    && ['opening', 'count-in', 'count-out', 'transfer-in', 'transfer-out'].includes(String(movement.kind))
+    && typeof movement.quantity === 'number'
+    && Number.isFinite(movement.quantity)
+    && movement.quantity > 0
+    && typeof movement.createdAt === 'string'
+    && Number.isFinite(Date.parse(movement.createdAt))
+    && (movement.warehouse === undefined || typeof movement.warehouse === 'string')
 }
 
 function synchronizeInventoryCatalog(
@@ -1825,6 +1945,7 @@ function synchronizeInventoryCatalog(
       ),
       stock: item.stock,
       lastMovementAt: item.lastMovementAt,
+      stockMovements: item.stockMovements ?? [],
     }
   })
   const existingCatalogWarehouses = new Set(
@@ -1850,6 +1971,7 @@ function synchronizeInventoryCatalog(
         warehouse,
         stock: 0,
         lastMovementAt: canonical.createdAt,
+        stockMovements: [],
       })
       existingCatalogWarehouses.add(key)
       existingIds.add(id)
@@ -2092,6 +2214,32 @@ function formatDecimalInput(value: string) {
     .replace(/\d/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)))
 }
 
+function parseStocktakeQuantity(value: string) {
+  const normalized = value
+    .replace(/[۰-۹٠-٩]/g, (digit) => {
+      const code = digit.charCodeAt(0)
+      return String(code >= 0x06f0 ? code - 0x06f0 : code - 0x0660)
+    })
+    .replace(/[−﹣]/g, '-')
+    .replace(/[\u200e\u200f]/g, '')
+    .replace(/[٬\s]/g, '')
+    .replace(/[٫,]/g, '.')
+  if (!normalized.trim()) return null
+  const quantity = Number(normalized)
+  return Number.isFinite(quantity) ? quantity : null
+}
+
+function formatStocktakeQuantity(quantity: number) {
+  return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 3 })
+    .format(quantity)
+    .replace(/[−﹣]/g, '-')
+    .replace(/[\u200e\u200f]/g, '')
+}
+
+function currentIsoTimestamp() {
+  return new Date().toISOString()
+}
+
 function parsePersonBalance(value: string) {
   const normalized = value
     .replace(/[۰-۹٠-٩]/g, (digit) => {
@@ -2254,6 +2402,7 @@ function App() {
   const [salesInvoiceItemOptionsOpen, setSalesInvoiceItemOptionsOpen] = useState(true)
   const [salesInvoiceDraftItem, setSalesInvoiceDraftItem] = useState<InventoryRecord | null>(null)
   const [salesInvoiceDraftDescription, setSalesInvoiceDraftDescription] = useState('')
+  const [salesInvoiceDraftWarehouse, setSalesInvoiceDraftWarehouse] = useState(DEFAULT_INVENTORY_WAREHOUSE)
   const [salesInvoiceDraftQuantity, setSalesInvoiceDraftQuantity] = useState(1)
   const [salesInvoiceDraftPrice, setSalesInvoiceDraftPrice] = useState(0)
   const [salesInvoiceDraftDiscountPercent, setSalesInvoiceDraftDiscountPercent] = useState(0)
@@ -2307,6 +2456,7 @@ function App() {
   const [inventoryProductTab, setInventoryProductTab] = useState<'basic' | 'extra'>('basic')
   const [inventoryProductFields, setInventoryProductFields] = useState(emptyInventoryProductForm)
   const [inventoryProductError, setInventoryProductError] = useState('')
+  const [inventoryDetailItemId, setInventoryDetailItemId] = useState<string | null>(null)
   const [inventoryServiceOpen, setInventoryServiceOpen] = useState(false)
   const [editingInventoryServiceId, setEditingInventoryServiceId] = useState<string | null>(null)
   const [inventoryServiceFields, setInventoryServiceFields] = useState(emptyInventoryServiceForm)
@@ -2335,6 +2485,18 @@ function App() {
   const [inventorySort, setInventorySort] = useState<(typeof inventorySortOptions)[number]['value']>('created')
   const [inventoryToolbarMenu, setInventoryToolbarMenu] = useState<'sort' | 'more' | null>(null)
   const [inventoryNoStockOnly, setInventoryNoStockOnly] = useState(false)
+  const [inventoryStocktakeOpen, setInventoryStocktakeOpen] = useState(false)
+  const [inventoryWarehouseStatsOpen, setInventoryWarehouseStatsOpen] = useState(false)
+  const [inventoryWarehouseStatsSearch, setInventoryWarehouseStatsSearch] = useState('')
+  const [inventoryStocktakeSearch, setInventoryStocktakeSearch] = useState('')
+  const [inventoryStocktakeCounts, setInventoryStocktakeCounts] = useState<Record<string, string>>({})
+  const [inventoryStocktakeError, setInventoryStocktakeError] = useState('')
+  const [inventoryStocktakeWarehousesOpen, setInventoryStocktakeWarehousesOpen] = useState(false)
+  const [inventoryTransferOpen, setInventoryTransferOpen] = useState(false)
+  const [inventoryTransferWarehouse, setInventoryTransferWarehouse] = useState('')
+  const [inventoryTransferItemId, setInventoryTransferItemId] = useState('')
+  const [inventoryTransferQuantity, setInventoryTransferQuantity] = useState('')
+  const [inventoryTransferError, setInventoryTransferError] = useState('')
   const [inventoryShareOpen, setInventoryShareOpen] = useState(false)
   const [inventoryShareSetting, setInventoryShareSetting] = useState<InventoryShareSetting>({
     scope: 'all',
@@ -2397,6 +2559,7 @@ function App() {
   const inventoryActionPressTimer = useRef<number | null>(null)
   const inventoryActionPressOrigin = useRef<{ x: number; y: number } | null>(null)
   const suppressInventoryActionClick = useRef(false)
+  const inventoryDetailCloseButtonRef = useRef<HTMLButtonElement>(null)
   const [notice, setNotice] = useState('')
   const [authNotice, setAuthNotice] = useState('')
   const backNavigationHandlerRef = useRef<() => boolean>(() => false)
@@ -2623,6 +2786,85 @@ function App() {
       ? (item.warehouse ?? DEFAULT_SERVICE_WAREHOUSE) === activeWarehouse
       : (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === activeWarehouse,
   )
+  const salesInvoiceDraftInventoryKind = salesInvoiceDraftItem?.kind ?? salesInvoiceCatalogKind ?? 'کالا'
+  const salesInvoiceWarehouseOptions = salesInvoiceDraftInventoryKind === 'خدمات'
+    ? [...new Set([DEFAULT_SERVICE_WAREHOUSE, ...(inventoryOptions.serviceWarehouses ?? [])])]
+    : [...new Set([DEFAULT_INVENTORY_WAREHOUSE, ...inventoryOptions.warehouses])]
+  const salesInvoiceInventoryItems = storedInventoryRecords.items.filter((item) => (
+    (item.warehouse ?? (
+      item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+    )) === salesInvoiceDraftWarehouse
+  ))
+  const inventoryStocktakeRecords = storedInventoryRecords.items.filter((item) => (
+    item.kind === inventoryKind
+    && (item.warehouse ?? (
+      inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+    )) === activeWarehouse
+  ))
+  const inventoryWarehouseStatsWarehouses = [...new Set([
+    DEFAULT_INVENTORY_WAREHOUSE,
+    ...inventoryOptions.warehouses,
+  ])]
+  const inventoryWarehouseStatsCatalog = new Map<string, InventoryRecord>()
+  for (const item of storedInventoryRecords.items) {
+    if (item.kind !== 'کالا') continue
+    const catalogId = item.catalogId ?? item.id
+    const current = inventoryWarehouseStatsCatalog.get(catalogId)
+    if (!current || item.warehouse === DEFAULT_INVENTORY_WAREHOUSE) {
+      inventoryWarehouseStatsCatalog.set(catalogId, item)
+    }
+  }
+  const inventoryWarehouseStatsQuery = inventoryWarehouseStatsSearch.trim().toLocaleLowerCase()
+  const inventoryWarehouseStatsItems = [...inventoryWarehouseStatsCatalog.entries()]
+    .map(([catalogId, item]) => ({
+      catalogId,
+      item,
+      stockByWarehouse: inventoryWarehouseStatsWarehouses.map((warehouse) => ({
+        warehouse,
+        item: storedInventoryRecords.items.find((record) => (
+          record.kind === 'کالا'
+          && (record.catalogId ?? record.id) === catalogId
+          && (record.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === warehouse
+        )),
+      })),
+    }))
+    .filter(({ item }) => !inventoryWarehouseStatsQuery || (
+      `${item.name} ${item.code ?? ''} ${item.barcode ?? ''}`
+        .toLocaleLowerCase()
+        .includes(inventoryWarehouseStatsQuery)
+    ))
+    .sort((first, second) => first.item.name.localeCompare(second.item.name, 'fa'))
+  const inventoryStocktakeItems = inventoryStocktakeRecords.filter((item) => {
+    const query = inventoryStocktakeSearch.trim().toLocaleLowerCase()
+    return !query
+      || item.name.toLocaleLowerCase().includes(query)
+      || (item.code ?? '').toLocaleLowerCase().includes(query)
+      || (item.barcode ?? '').toLocaleLowerCase().includes(query)
+  })
+  const inventoryTransferWarehouses = inventoryKind === 'کالا'
+    ? inventoryOptions.warehouses.filter((warehouse) => warehouse !== activeWarehouse)
+    : []
+  const inventoryTransferItems = inventoryStocktakeRecords.filter((item) => item.kind === 'کالا')
+  const inventoryStocktakeDifferences = inventoryStocktakeRecords.reduce((total, item) => {
+    const count = parseStocktakeQuantity(
+      inventoryStocktakeCounts[item.id] ?? formatStocktakeQuantity(item.stock),
+    )
+    return count !== null && Math.abs(count - item.stock) > 0.000001 ? total + 1 : total
+  }, 0)
+  const inventoryStocktakeNoDifferences = inventoryStocktakeRecords.reduce((total, item) => {
+    const count = parseStocktakeQuantity(
+      inventoryStocktakeCounts[item.id] ?? formatStocktakeQuantity(item.stock),
+    )
+    return count !== null && Math.abs(count - item.stock) <= 0.000001 ? total + 1 : total
+  }, 0)
+  const inventoryStocktakeValue = inventoryStocktakeRecords.reduce((total, item) => {
+    const count = parseStocktakeQuantity(
+      inventoryStocktakeCounts[item.id] ?? formatStocktakeQuantity(item.stock),
+    )
+    return count === null
+      ? total
+      : total + Math.abs(count - item.stock) * item.purchasePrice
+  }, 0)
   const salesInvoiceEditingInvoice = salesInvoiceEditingId
     ? storedSalesInvoices.invoices.find((invoice) => invoice.id === salesInvoiceEditingId) ?? null
     : null
@@ -2673,7 +2915,7 @@ function App() {
   ))
   const selectedSalesInvoicePerson = invoicePeople.find((person) => person.id === salesInvoicePerson)
   const salesInvoiceSubtotal = salesInvoiceLines.reduce((total, line) => {
-    const item = inventoryItems.find((inventoryItem) => inventoryItem.id === line.itemId)
+    const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
     if (!item) return total
     return total + Math.max(0, (line.unitPrice ?? item.salePrice) * line.quantity - line.discount)
   }, 0)
@@ -2684,7 +2926,7 @@ function App() {
     return total + (adjustment.kind === 'addition' ? amount : -amount)
   }, 0)
   const salesInvoiceTotal = Math.max(0, salesInvoiceSubtotal + salesInvoiceAdjustmentTotal)
-  const filteredSalesInvoiceItems = inventoryItems
+  const filteredSalesInvoiceItems = salesInvoiceInventoryItems
     .filter((item) => `${item.name} ${item.brand} ${item.code ?? ''} ${item.barcode ?? ''}`
       .toLocaleLowerCase().includes(salesInvoiceItemSearch.trim().toLocaleLowerCase()))
   const salesInvoiceCatalogTaxonomy = salesInvoiceCatalogKind === 'خدمات'
@@ -2693,24 +2935,24 @@ function App() {
   const salesInvoiceCatalogGroups = salesInvoiceCatalogKind
     ? [...new Set([
       ...salesInvoiceCatalogTaxonomy.groupsByKind[salesInvoiceCatalogKind],
-      ...inventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.group),
+      ...salesInvoiceInventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.group),
     ])]
     : []
   const salesInvoiceCatalogCategories = salesInvoiceCatalogKind
     ? salesInvoiceCatalogGroup === 'همه'
       ? [...new Set([
         ...salesInvoiceCatalogGroups.flatMap((group) => salesInvoiceCatalogTaxonomy.categoriesByGroup[group] ?? []),
-        ...inventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.category),
+        ...salesInvoiceInventoryItems.filter((item) => item.kind === salesInvoiceCatalogKind).map((item) => item.category),
       ])]
       : [...new Set([
         ...(salesInvoiceCatalogTaxonomy.categoriesByGroup[salesInvoiceCatalogGroup] ?? []),
-        ...inventoryItems
+        ...salesInvoiceInventoryItems
           .filter((item) => item.kind === salesInvoiceCatalogKind && item.group === salesInvoiceCatalogGroup)
           .map((item) => item.category),
       ])]
     : []
   const filteredSalesInvoiceCatalogItems = salesInvoiceCatalogKind
-    ? inventoryItems
+    ? salesInvoiceInventoryItems
       .filter((item) => item.kind === salesInvoiceCatalogKind)
       .filter((item) => salesInvoiceCatalogGroup === 'همه' || item.group === salesInvoiceCatalogGroup)
       .filter((item) => salesInvoiceCatalogCategory === 'همه' || item.category === salesInvoiceCatalogCategory)
@@ -2736,6 +2978,16 @@ function App() {
       if (inventorySort === 'lastMovement') return second.lastMovementAt.localeCompare(first.lastMovementAt)
       return second.createdAt.localeCompare(first.createdAt)
     })
+  const inventoryDetailItem = inventoryDetailItemId
+    ? storedInventoryRecords.items.find((item) => item.id === inventoryDetailItemId)
+    : undefined
+  const inventoryDetailActivity = inventoryDetailItem
+    ? getInventoryItemActivity(
+        inventoryDetailItem,
+        storedSalesInvoices.invoices,
+        storedPurchaseInvoices.invoices,
+      )
+    : []
   const inventoryShareTaxonomy = inventoryShareSetting.kind === 'خدمات'
     ? inventoryOptions.serviceTaxonomy ?? inventoryOptions
     : inventoryOptions
@@ -3161,6 +3413,32 @@ function App() {
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [inventoryActionItem])
+
+  useEffect(() => {
+    if (!inventoryDetailItemId) return
+    inventoryDetailCloseButtonRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setInventoryDetailItemId(null)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [inventoryDetailItemId])
+
+  useEffect(() => {
+    if (!inventoryStocktakeOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (inventoryWarehouseStatsOpen) {
+          setInventoryWarehouseStatsOpen(false)
+        } else {
+          setInventoryStocktakeOpen(false)
+          setInventoryStocktakeWarehousesOpen(false)
+        }
+      }
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [inventoryStocktakeOpen, inventoryWarehouseStatsOpen])
 
   useEffect(() => {
     if (!personFormOpen) return
@@ -4515,7 +4793,7 @@ function App() {
         total: line.total,
       }))
       : salesInvoiceLines.flatMap((line) => {
-        const item = inventoryItems.find((inventoryItem) => inventoryItem.id === line.itemId)
+        const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
         if (!item) return []
         const unitPrice = line.unitPrice ?? item.salePrice
         return [{
@@ -4736,7 +5014,7 @@ function App() {
 
   const editSavedSalesInvoice = (invoice: SavedSalesInvoice) => {
     const unavailableItem = invoice.lines.find((line) => (
-      !inventoryItems.some((item) => item.id === line.itemId)
+      !storedInventoryRecords.items.some((item) => item.id === line.itemId)
     ))
     if (unavailableItem) {
       setNotice(`کالای «${unavailableItem.description}» دیگر در فهرست انبار نیست؛ اصلاح فاکتور ممکن نیست.`)
@@ -4749,6 +5027,9 @@ function App() {
     setSalesInvoiceLines(invoice.lines.map((line, index) => ({
       id: `${invoice.id}-edit-${index}`,
       itemId: line.itemId,
+      warehouse: line.warehouse
+        ?? storedInventoryRecords.items.find((item) => item.id === line.itemId)?.warehouse
+        ?? DEFAULT_INVENTORY_WAREHOUSE,
       quantity: line.quantity,
       discount: line.discount,
       unitPrice: line.unitPrice,
@@ -5124,7 +5405,7 @@ function App() {
       }
 
       const nowIso = now.toISOString()
-      const itemById = new Map(inventoryItems.map((item) => [item.id, item]))
+      const itemById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
       const purchaseLines: SavedSalesInvoiceLine[] = salesInvoiceLines.map((line) => {
         const item = itemById.get(line.itemId)
         if (!item) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
@@ -5133,6 +5414,9 @@ function App() {
         if (!Number.isFinite(total)) throw new Error(`مبلغ «${item.name}» معتبر نیست.`)
         return {
           itemId: item.id,
+          warehouse: item.warehouse ?? (
+            item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+          ),
           description: line.description || item.name,
           kind: item.kind,
           unit: item.unit,
@@ -5311,7 +5595,7 @@ function App() {
       }
 
       const nowIso = now.toISOString()
-      const itemById = new Map(inventoryItems.map((item) => [item.id, item]))
+      const itemById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
       const saleLines: SavedSalesInvoiceLine[] = salesInvoiceLines.map((line) => {
         const item = itemById.get(line.itemId)
         if (!item) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
@@ -5319,6 +5603,9 @@ function App() {
         const total = Math.max(0, unitPrice * line.quantity - line.discount)
         return {
           itemId: item.id,
+          warehouse: item.warehouse ?? (
+            item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+          ),
           description: line.description || item.name,
           kind: item.kind,
           unit: item.unit,
@@ -5546,6 +5833,9 @@ function App() {
     setSalesInvoiceItemOptionsOpen(false)
     setSalesInvoiceDraftItem(null)
     setSalesInvoiceDraftDescription('')
+    setSalesInvoiceDraftWarehouse(salesInvoiceWarehouseOptions.includes(activeWarehouse)
+      ? activeWarehouse
+      : DEFAULT_INVENTORY_WAREHOUSE)
     setSalesInvoiceDraftQuantity(1)
     setSalesInvoiceDraftPrice(0)
     setSalesInvoiceDraftDiscountPercent(0)
@@ -5563,6 +5853,9 @@ function App() {
   const selectSalesInvoiceItem = useCallback((item: InventoryRecord) => {
     setSalesInvoiceBarcodeMode(false)
     setSalesInvoiceDraftItem(item)
+    setSalesInvoiceDraftWarehouse(item.warehouse ?? (
+      item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+    ))
     setSalesInvoiceItemSearch(item.name)
     setSalesInvoiceItemOptionsOpen(false)
     setSalesInvoiceCatalogOpen(false)
@@ -5620,7 +5913,7 @@ function App() {
 
           const barcode = result.getText().trim()
           if (!barcode) return
-          const item = inventoryItems.find((inventoryItem) => (
+          const item = salesInvoiceInventoryItems.find((inventoryItem) => (
             inventoryItem.barcode?.trim() === barcode || inventoryItem.code?.trim() === barcode
           ))
 
@@ -5652,7 +5945,7 @@ function App() {
       controls?.stop()
     }
   }, [
-    inventoryItems,
+    salesInvoiceInventoryItems,
     salesInvoiceBarcodeScannerOpen,
     selectSalesInvoiceItem,
   ])
@@ -5663,6 +5956,9 @@ function App() {
     setSalesInvoiceCatalogCategory('همه')
     setSalesInvoiceCatalogSearch('')
     setSalesInvoiceItemSearch('')
+    if (!inventoryOptions.warehouses.includes(salesInvoiceDraftWarehouse)) {
+      setSalesInvoiceDraftWarehouse(inventoryOptions.warehouses[0] ?? DEFAULT_INVENTORY_WAREHOUSE)
+    }
     setSalesInvoiceCatalogOpen(true)
   }
 
@@ -5721,6 +6017,7 @@ function App() {
         line.itemId === salesInvoiceDraftItem.id
         && (line.unitPrice ?? salesInvoiceDraftItem.salePrice) === salesInvoiceDraftPrice
         && (line.description ?? salesInvoiceDraftItem.name) === description
+        && (line.warehouse ?? salesInvoiceDraftWarehouse) === salesInvoiceDraftWarehouse
       ))
       if (existing) {
         return lines.map((line) => line.id === existing.id
@@ -5730,12 +6027,14 @@ function App() {
             discount: line.discount + discount,
             unitPrice: salesInvoiceDraftPrice,
             description,
+            warehouse: salesInvoiceDraftWarehouse,
           }
           : line)
       }
       return [...lines, {
         id: `${salesInvoiceDraftItem.id}-${Date.now()}`,
         itemId: salesInvoiceDraftItem.id,
+        warehouse: salesInvoiceDraftWarehouse,
         quantity: salesInvoiceDraftQuantity,
         discount,
         unitPrice: salesInvoiceDraftPrice,
@@ -6270,6 +6569,19 @@ function App() {
                 ...item,
                 ...sharedFields,
                 stock: item.id === editedItem.id ? stock : item.stock,
+                ...(item.id === editedItem.id && Math.abs(stock - item.stock) > 0.000001
+                  ? {
+                      stockMovements: [
+                        ...(item.stockMovements ?? []),
+                        {
+                          id: `stock-adjustment-${Date.now()}`,
+                          kind: stock > item.stock ? 'count-in' as const : 'count-out' as const,
+                          quantity: Math.abs(stock - item.stock),
+                          createdAt: now,
+                        },
+                      ],
+                    }
+                  : {}),
               }
             : item)
       : (() => {
@@ -6283,6 +6595,14 @@ function App() {
             kind: 'کالا',
             stock,
             warehouse: activeWarehouse,
+            stockMovements: stock > 0
+              ? [{
+                  id: `stock-opening-${catalogId}`,
+                  kind: 'opening',
+                  quantity: stock,
+                  createdAt: now,
+                }]
+              : [],
           }
           return [...storedInventoryRecords.items, item]
         })()
@@ -6787,6 +7107,181 @@ function App() {
     if (nextItems !== storedInventoryRecords.items) setStoredInventoryRecords({ items: nextItems, error: '' })
   }
 
+  const openInventoryStocktake = () => {
+    setInventoryStocktakeCounts(Object.fromEntries(
+      inventoryStocktakeRecords.map((item) => [item.id, formatStocktakeQuantity(item.stock)]),
+    ))
+    setInventoryStocktakeSearch('')
+    setInventoryStocktakeError('')
+    setInventoryStocktakeWarehousesOpen(false)
+    setInventoryWarehousesOpen(false)
+    setInventoryStocktakeOpen(true)
+  }
+
+  const changeInventoryStocktakeWarehouse = (warehouse: string) => {
+    const warehouseItems = storedInventoryRecords.items.filter((item) => (
+      item.kind === inventoryKind
+      && (item.warehouse ?? (
+        inventoryKind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+      )) === warehouse
+    ))
+    setInventoryStocktakeCounts(Object.fromEntries(
+      warehouseItems.map((item) => [item.id, formatStocktakeQuantity(item.stock)]),
+    ))
+    if (inventoryKind === 'خدمات') setSelectedServiceWarehouse(warehouse)
+    else setSelectedWarehouse(warehouse)
+    setInventoryStocktakeSearch('')
+    setInventoryStocktakeError('')
+    setInventoryStocktakeWarehousesOpen(false)
+  }
+
+  const saveInventoryStocktake = () => {
+    const countedStocks = new Map<string, number>()
+    for (const item of inventoryStocktakeRecords) {
+      const count = parseStocktakeQuantity(
+        inventoryStocktakeCounts[item.id] ?? formatStocktakeQuantity(item.stock),
+      )
+      if (count === null) {
+        setInventoryStocktakeError(`مقدار شمارش‌شدهٔ «${item.name}» را به‌صورت عدد وارد کنید.`)
+        return
+      }
+      countedStocks.set(item.id, count)
+    }
+
+    const changedAt = currentIsoTimestamp()
+    const nextItems = storedInventoryRecords.items.map((item) => {
+      const countedStock = countedStocks.get(item.id)
+      return countedStock === undefined || countedStock === item.stock
+        ? item
+        : {
+            ...item,
+            stock: countedStock,
+            lastMovementAt: changedAt,
+            stockMovements: [
+              ...(item.stockMovements ?? []),
+              {
+                id: `stock-count-${item.id}-${Date.now()}`,
+                kind: countedStock > item.stock ? 'count-in' as const : 'count-out' as const,
+                quantity: Math.abs(countedStock - item.stock),
+                createdAt: changedAt,
+              },
+            ],
+          }
+    })
+    try {
+      if (nextItems.some((item, index) => item !== storedInventoryRecords.items[index])) {
+        persistInventoryChanges(inventoryOptions, nextItems)
+      }
+      setInventoryStocktakeOpen(false)
+      setInventoryStocktakeWarehousesOpen(false)
+      setInventoryStocktakeError('')
+      setNotice(`انبارگردانی ${inventoryKind} در «${activeWarehouse}» ثبت شد.`)
+      window.setTimeout(() => setNotice(''), 2600)
+    } catch {
+      setInventoryStocktakeError('ثبت انبارگردانی انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+    }
+  }
+
+  const openInventoryTransfer = () => {
+    setInventoryTransferWarehouse(inventoryTransferWarehouses[0] ?? '')
+    setInventoryTransferItemId(inventoryTransferItems[0]?.id ?? '')
+    setInventoryTransferQuantity('')
+    setInventoryTransferError('')
+    setInventoryTransferOpen(true)
+  }
+
+  const saveInventoryTransfer = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const quantity = parseStocktakeQuantity(inventoryTransferQuantity)
+    if (!inventoryTransferWarehouse || !inventoryTransferWarehouses.includes(inventoryTransferWarehouse)) {
+      setInventoryTransferError('انبار مقصد را انتخاب کنید.')
+      return
+    }
+    if (quantity === null || quantity <= 0) {
+      setInventoryTransferError('مقدار انتقال باید عددی بزرگ‌تر از صفر باشد.')
+      return
+    }
+
+    const sourceItem = inventoryTransferItems.find((item) => item.id === inventoryTransferItemId)
+    if (!sourceItem) {
+      setInventoryTransferError('کالای موردنظر برای انتقال پیدا نشد.')
+      return
+    }
+    if (quantity > sourceItem.stock) {
+      setInventoryTransferError(`موجودی قابل انتقال ${formatStocktakeQuantity(sourceItem.stock)} ${sourceItem.unit} است.`)
+      return
+    }
+
+    const catalogId = sourceItem.catalogId ?? sourceItem.id
+    const destinationItem = storedInventoryRecords.items.find((item) => (
+      item.kind === 'کالا'
+      && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === inventoryTransferWarehouse
+      && (item.catalogId ?? item.id) === catalogId
+    ))
+    if (!destinationItem) {
+      setInventoryTransferError('نسخهٔ این کالا در انبار مقصد پیدا نشد؛ فهرست انبارها را همگام‌سازی کنید.')
+      return
+    }
+
+    const changedAt = currentIsoTimestamp()
+    const sourceStock = sourceItem.stock - quantity
+    const destinationStock = destinationItem.stock + quantity
+    const nextItems = storedInventoryRecords.items.map((item) => {
+      if (item.id === sourceItem.id) {
+        return {
+          ...item,
+          stock: sourceStock,
+          lastMovementAt: changedAt,
+          stockMovements: [
+            ...(item.stockMovements ?? []),
+            {
+              id: `stock-transfer-out-${sourceItem.id}-${Date.now()}`,
+              kind: 'transfer-out' as const,
+              quantity,
+              createdAt: changedAt,
+              warehouse: inventoryTransferWarehouse,
+            },
+          ],
+        }
+      }
+      if (item.id === destinationItem.id) {
+        return {
+          ...item,
+          stock: destinationStock,
+          lastMovementAt: changedAt,
+          stockMovements: [
+            ...(item.stockMovements ?? []),
+            {
+              id: `stock-transfer-in-${destinationItem.id}-${Date.now()}`,
+              kind: 'transfer-in' as const,
+              quantity,
+              createdAt: changedAt,
+              warehouse: sourceItem.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE,
+            },
+          ],
+        }
+      }
+      return item
+    })
+
+    try {
+      persistInventoryChanges(inventoryOptions, nextItems)
+      setInventoryStocktakeCounts((counts) => ({
+        ...counts,
+        [sourceItem.id]: formatStocktakeQuantity(sourceStock),
+        [destinationItem.id]: formatStocktakeQuantity(destinationStock),
+      }))
+      setInventoryTransferOpen(false)
+      setInventoryTransferError('')
+      setNotice(
+        `${formatStocktakeQuantity(quantity)} ${sourceItem.unit} «${sourceItem.name}» به «${inventoryTransferWarehouse}» منتقل شد.`,
+      )
+      window.setTimeout(() => setNotice(''), 3000)
+    } catch {
+      setInventoryTransferError('انتقال کالا ذخیره نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+    }
+  }
+
   const addInventoryTaxonomy = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = inventoryTaxonomyInput.trim()
@@ -7109,6 +7604,10 @@ function App() {
           centralItems[centralIndex] = {
             ...centralItem,
             stock: centralItem.stock + item.stock,
+            stockMovements: [
+              ...(centralItem.stockMovements ?? []),
+              ...(item.stockMovements ?? []),
+            ],
             lastMovementAt: centralItem.lastMovementAt > item.lastMovementAt
               ? centralItem.lastMovementAt
               : item.lastMovementAt,
@@ -10070,6 +10569,7 @@ function App() {
                     <thead>
                       <tr>
                         <th>شرح</th>
+                        <th>انبار</th>
                         <th>مقدار</th>
                         <th>فی</th>
                         {salesInvoiceSettings.enableItemDiscount && <th>تخفیف</th>}
@@ -10079,7 +10579,7 @@ function App() {
                     <tbody>
                       {salesInvoiceLines.length === 0 ? (
                         <tr>
-                          <td colSpan={salesInvoiceSettings.enableItemDiscount ? 5 : 4}>
+                          <td colSpan={salesInvoiceSettings.enableItemDiscount ? 6 : 5}>
                             <div className="sales-invoice-empty-state">
                               <span aria-hidden="true">▤</span>
                               <strong>هنوز کالایی به فاکتور اضافه نشده</strong>
@@ -10089,7 +10589,7 @@ function App() {
                         </tr>
                       ) : (
                         salesInvoiceLines.map((line) => {
-                          const item = inventoryItems.find((inventoryItem) => inventoryItem.id === line.itemId)
+                          const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
                           if (!item) return null
                           const lineTotal = Math.max(0, (line.unitPrice ?? item.salePrice) * line.quantity - line.discount)
                           return (
@@ -10108,6 +10608,11 @@ function App() {
                                   {line.description || item.name}
                                 </strong>
                                 <small>{item.unit} · {item.kind}</small>
+                              </td>
+                              <td className="sales-invoice-line-warehouse">
+                                {line.warehouse ?? item.warehouse ?? (
+                                  item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+                                )}
                               </td>
                               <td>
                                 <div className="sales-invoice-line-quantity">
@@ -11372,18 +11877,55 @@ function App() {
                           readOnly
                         />
                       </label>
-                      {salesInvoiceSettings.enableItemDescription && (
-                        <label className="sales-invoice-form-field">
-                          <span>توضیحات کالا...</span>
-                          <input
-                            aria-label="توضیحات کالا"
-                            value={salesInvoiceDraftDescription}
-                            onChange={(event) => setSalesInvoiceDraftDescription(event.target.value)}
-                            placeholder="توضیحات کالا..."
-                            disabled={!salesInvoiceDraftItem}
-                          />
-                        </label>
-                      )}
+                      <label className="sales-invoice-form-field">
+                        <span>انبار:</span>
+                        <select
+                          aria-label="انتخاب انبار کالا"
+                          value={salesInvoiceDraftWarehouse}
+                          onChange={(event) => {
+                            const warehouse = event.target.value
+                            if (salesInvoiceDraftItem) {
+                              const catalogId = salesInvoiceDraftItem.catalogId ?? salesInvoiceDraftItem.id
+                              const warehouseItem = storedInventoryRecords.items.find((item) => (
+                                item.kind === salesInvoiceDraftItem.kind
+                                && (item.catalogId ?? item.id) === catalogId
+                                && (item.warehouse ?? (
+                                  item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+                                )) === warehouse
+                              ))
+                              if (!warehouseItem) {
+                                setNotice(`نسخهٔ «${salesInvoiceDraftItem.name}» در «${warehouse}» پیدا نشد.`)
+                                window.setTimeout(() => setNotice(''), 2600)
+                                return
+                              }
+                              setSalesInvoiceDraftItem(warehouseItem)
+                            }
+                            setSalesInvoiceDraftWarehouse(warehouse)
+                          }}
+                          dir="rtl"
+                        >
+                          {salesInvoiceWarehouseOptions.map((warehouse) => {
+                            const warehouseItem = salesInvoiceDraftItem
+                              ? storedInventoryRecords.items.find((item) => (
+                                  item.kind === salesInvoiceDraftItem.kind
+                                  && (item.catalogId ?? item.id)
+                                    === (salesInvoiceDraftItem.catalogId ?? salesInvoiceDraftItem.id)
+                                  && (item.warehouse ?? (
+                                    item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+                                  )) === warehouse
+                                ))
+                              : undefined
+                            const stockLabel = salesInvoiceDraftItem
+                              ? `${formatStocktakeQuantity(warehouseItem?.stock ?? 0)} ${warehouseItem?.unit ?? salesInvoiceDraftItem.unit}`
+                              : ''
+                            return (
+                              <option key={warehouse} value={warehouse} dir="rtl">
+                                {stockLabel ? `${warehouse}　　${stockLabel}` : warehouse}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </label>
                       </div>
 
                     <label className="sales-invoice-form-field sales-invoice-item-quantity">
@@ -11491,6 +12033,19 @@ function App() {
                       </div>
                     </div>
 
+                    {salesInvoiceSettings.enableItemDescription && (
+                      <label className="sales-invoice-form-field">
+                        <span>توضیحات کالا:</span>
+                        <input
+                          aria-label="توضیحات کالا"
+                          value={salesInvoiceDraftDescription}
+                          onChange={(event) => setSalesInvoiceDraftDescription(event.target.value)}
+                          placeholder="توضیحات کالا..."
+                          disabled={!salesInvoiceDraftItem}
+                        />
+                      </label>
+                    )}
+
                     <footer className="sales-invoice-item-actions">
                       <button type="button" onClick={() => commitSalesInvoiceDraftItem(false)}>بعدی <span aria-hidden="true">✓</span></button>
                       <button type="button" onClick={() => commitSalesInvoiceDraftItem(true)}>اتمام <span aria-hidden="true">×</span></button>
@@ -11538,6 +12093,14 @@ function App() {
                             setSalesInvoiceCatalogGroup('همه')
                             setSalesInvoiceCatalogCategory('همه')
                             setSalesInvoiceCatalogSearch('')
+                            const warehouses = kind === 'خدمات'
+                              ? [DEFAULT_SERVICE_WAREHOUSE, ...(inventoryOptions.serviceWarehouses ?? [])]
+                              : [DEFAULT_INVENTORY_WAREHOUSE, ...inventoryOptions.warehouses]
+                            if (!warehouses.includes(salesInvoiceDraftWarehouse)) {
+                              setSalesInvoiceDraftWarehouse(warehouses[0] ?? (
+                                kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+                              ))
+                            }
                           }}
                         >
                           <span aria-hidden="true">{kind === 'خدمات' ? '✦' : kind === 'تولید' ? '⚙' : '▦'}</span>
@@ -12611,6 +13174,365 @@ function App() {
           </div>
         ) : activeTab === 'کالا و انبار' ? (
           <div className="inventory-page">
+            {inventoryStocktakeOpen && (
+              <section
+                className="inventory-stocktake-page"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="inventory-stocktake-title"
+              >
+                {inventoryWarehouseStatsOpen && (
+                  <section
+                    className="inventory-warehouse-stats-page"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="inventory-warehouse-stats-title"
+                  >
+                    <header className="inventory-stocktake-header">
+                      <div className="inventory-stocktake-title-row">
+                        <div>
+                          <span className="inventory-stocktake-step">نمای کلی موجودی کالا</span>
+                          <h1 id="inventory-warehouse-stats-title">آمارگیری انبارها تفکیکی</h1>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="بازگشت به انبارگردانی"
+                          onClick={() => setInventoryWarehouseStatsOpen(false)}
+                        >
+                          <span aria-hidden="true">←</span>
+                        </button>
+                      </div>
+                      <p>موجودی هر کالا را به تفکیک تمام انبارها ببینید.</p>
+                    </header>
+                    <div className="inventory-warehouse-stats-content">
+                      <label className="inventory-warehouse-stats-search">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <circle cx="10.8" cy="10.8" r="6.8" />
+                          <path d="m16 16 5 5" />
+                        </svg>
+                        <input
+                          type="search"
+                          aria-label="جست‌وجوی کالا در همهٔ انبارها"
+                          placeholder="جست‌وجو بر اساس نام یا کد کالا"
+                          value={inventoryWarehouseStatsSearch}
+                          onChange={(event) => setInventoryWarehouseStatsSearch(event.target.value)}
+                        />
+                      </label>
+                      <div className="inventory-warehouse-stats-summary" aria-live="polite">
+                        {inventoryWarehouseStatsItems.length
+                          ? `${formatPersonBalance(inventoryWarehouseStatsItems.length)} کالا`
+                          : inventoryWarehouseStatsQuery
+                            ? 'کالایی با این نام یا کد پیدا نشد'
+                            : 'هنوز کالایی در فهرست ثبت نشده است'}
+                      </div>
+                      <div className="inventory-warehouse-stats-list">
+                        {inventoryWarehouseStatsItems.map(({ catalogId, item, stockByWarehouse }) => (
+                          <article className="inventory-warehouse-stats-card" key={catalogId}>
+                            <header>
+                              <div>
+                                <strong>{item.name}</strong>
+                                <span>کد کالا: {item.code || '—'}</span>
+                              </div>
+                              {item.barcode && <small>بارکد: {item.barcode}</small>}
+                            </header>
+                            <ul>
+                              {stockByWarehouse.map(({ warehouse, item: warehouseItem }) => (
+                                <li key={warehouse}>
+                                  <span>{warehouse}</span>
+                                  <strong>
+                                    {formatStocktakeQuantity(warehouseItem?.stock ?? 0)}
+                                    {' '}
+                                    {warehouseItem?.unit ?? item.unit}
+                                  </strong>
+                                </li>
+                              ))}
+                            </ul>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+                <header className="inventory-stocktake-header">
+                  <div className="inventory-stocktake-title-row">
+                    <div>
+                      <span className="inventory-stocktake-step">انبار {inventoryKind}</span>
+                      <h1 id="inventory-stocktake-title">
+                        انبارگردانی {inventoryKind === 'کالا' ? 'کالاها' : inventoryKind}
+                      </h1>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بازگشت به فهرست"
+                      onClick={() => {
+                        setInventoryStocktakeOpen(false)
+                        setInventoryStocktakeWarehousesOpen(false)
+                      }}
+                    >
+                      <span aria-hidden="true">←</span>
+                    </button>
+                  </div>
+                  <p>تعداد واقعی هر مورد را وارد کنید تا اختلاف با موجودی سیستم مشخص شود.</p>
+                </header>
+
+                <div className="inventory-stocktake-content">
+                  <div className="inventory-stocktake-toolbar">
+                    {inventoryKind === 'کالا' && (
+                      <button
+                        className="inventory-stocktake-transfer-button inventory-warehouse-stats-button"
+                        type="button"
+                        onClick={() => {
+                          setInventoryWarehouseStatsSearch('')
+                          setInventoryWarehouseStatsOpen(true)
+                        }}
+                      >
+                        <span aria-hidden="true">▤</span>
+                        آمارگیری انبارها تفکیکی
+                      </button>
+                    )}
+                    {inventoryKind === 'کالا' && (
+                      <button
+                        className="inventory-stocktake-transfer-button"
+                        type="button"
+                        disabled={inventoryTransferWarehouses.length === 0 || inventoryTransferItems.length === 0}
+                        onClick={openInventoryTransfer}
+                      >
+                        <span aria-hidden="true">⇄</span>
+                        انتقال کالا بین انبارها
+                      </button>
+                    )}
+                    <div className="inventory-stocktake-warehouse-wrap">
+                      <button
+                        className="inventory-stocktake-warehouse"
+                        type="button"
+                        aria-expanded={inventoryStocktakeWarehousesOpen}
+                        onClick={() => setInventoryStocktakeWarehousesOpen(!inventoryStocktakeWarehousesOpen)}
+                      >
+                        <span>{activeWarehouse}</span>
+                        <span aria-hidden="true">⌄</span>
+                      </button>
+                      {inventoryStocktakeWarehousesOpen && (
+                        <div className="inventory-stocktake-warehouse-menu" role="group" aria-label="انتخاب انبار">
+                          {activeWarehouseOptions.map((warehouse) => (
+                            <button
+                              key={warehouse}
+                              type="button"
+                              aria-pressed={warehouse === activeWarehouse}
+                              onClick={() => changeInventoryStocktakeWarehouse(warehouse)}
+                            >
+                              {warehouse}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="inventory-stocktake-search">
+                    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                      <circle cx="13.5" cy="13.5" r="8.5" />
+                      <path d="m20 20 7 7" />
+                    </svg>
+                    <input
+                      type="search"
+                      aria-label={`جست‌وجو در انبارگردانی ${inventoryKind}`}
+                      placeholder="جست‌وجو نام، کد یا بارکد"
+                      value={inventoryStocktakeSearch}
+                      onChange={(event) => setInventoryStocktakeSearch(event.target.value)}
+                    />
+                  </label>
+
+                  <div className="inventory-stocktake-summary" aria-live="polite">
+                    <span className="inventory-stocktake-no-difference">
+                      بدون اختلاف: {formatPersonBalance(inventoryStocktakeNoDifferences)}
+                    </span>
+                    <span className="inventory-stocktake-has-difference">
+                      دارای اختلاف: {formatPersonBalance(inventoryStocktakeDifferences)}
+                    </span>
+                  </div>
+
+                  <div className="inventory-stocktake-list">
+                    {inventoryStocktakeItems.map((item) => {
+                      const countedValue = inventoryStocktakeCounts[item.id]
+                        ?? formatStocktakeQuantity(item.stock)
+                      const countedQuantity = parseStocktakeQuantity(countedValue)
+                      const hasDifference = countedQuantity !== null
+                        && Math.abs(countedQuantity - item.stock) > 0.000001
+                      return (
+                        <article className="inventory-stocktake-card" key={item.id}>
+                          <div className="inventory-stocktake-card-heading">
+                            <strong>{item.name}</strong>
+                            <span>کد: {item.code || '—'}</span>
+                          </div>
+                          <div className="inventory-stocktake-card-details">
+                            <div className="inventory-stocktake-system">
+                              <span>موجودی سیستم</span>
+                              <strong>{formatStocktakeQuantity(item.stock)} {item.unit}</strong>
+                            </div>
+                            <div className="inventory-stocktake-count">
+                              <label htmlFor={`stocktake-count-${item.id}`}>مقدار شمارش‌شده</label>
+                              <div className="inventory-stocktake-count-controls">
+                                <button
+                                  type="button"
+                                  aria-label={`افزایش موجودی شمارش‌شدهٔ ${item.name}`}
+                                  onClick={() => {
+                                    const current = countedQuantity ?? item.stock
+                                    setInventoryStocktakeCounts((counts) => ({
+                                      ...counts,
+                                      [item.id]: formatStocktakeQuantity(current + 1),
+                                    }))
+                                    setInventoryStocktakeError('')
+                                  }}
+                                >
+                                  +
+                                </button>
+                                <input
+                                  id={`stocktake-count-${item.id}`}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={countedValue}
+                                  onChange={(event) => {
+                                    setInventoryStocktakeCounts((counts) => ({
+                                      ...counts,
+                                      [item.id]: formatDecimalInput(event.target.value),
+                                    }))
+                                    setInventoryStocktakeError('')
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={`کاهش موجودی شمارش‌شدهٔ ${item.name}`}
+                                  onClick={() => {
+                                    const current = countedQuantity ?? item.stock
+                                    setInventoryStocktakeCounts((counts) => ({
+                                      ...counts,
+                                      [item.id]: formatStocktakeQuantity(current - 1),
+                                    }))
+                                    setInventoryStocktakeError('')
+                                  }}
+                                >
+                                  −
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <span className={`inventory-stocktake-status${hasDifference ? ' has-difference' : ''}`}>
+                            {countedQuantity === null
+                              ? 'مقدار شمارش‌شده را بررسی کنید'
+                              : hasDifference
+                                ? `اختلاف: ${formatStocktakeQuantity(countedQuantity - item.stock)} ${item.unit}`
+                                : 'موجودی شمارش‌شده درست است'}
+                          </span>
+                        </article>
+                      )
+                    })}
+                    {inventoryStocktakeItems.length === 0 && (
+                      <div className="inventory-stocktake-empty">
+                        {inventoryStocktakeRecords.length === 0
+                          ? `در ${activeWarehouse} موردی برای شمارش ثبت نشده است.`
+                          : 'موردی با این نام، کد یا بارکد پیدا نشد.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <footer className="inventory-stocktake-footer">
+                  <div>
+                    <span>ارزش اختلاف بر اساس قیمت خرید:</span>
+                    <strong>{formatPersonBalance(Math.round(inventoryStocktakeValue))} ریال</strong>
+                  </div>
+                  {inventoryStocktakeError && (
+                    <p role="alert">{inventoryStocktakeError}</p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={inventoryStocktakeRecords.length === 0}
+                    onClick={saveInventoryStocktake}
+                  >
+                    بررسی اختلاف‌ها و ثبت نهایی
+                  </button>
+                </footer>
+                {inventoryTransferOpen && (
+                  <div className="inventory-transfer-backdrop">
+                    <form
+                      className="inventory-transfer-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="inventory-transfer-title"
+                      onSubmit={saveInventoryTransfer}
+                    >
+                      <header>
+                        <div>
+                          <span>انتقال موجودی</span>
+                          <h2 id="inventory-transfer-title">انتقال کالا بین انبارها</h2>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="بستن پنجره انتقال"
+                          onClick={() => setInventoryTransferOpen(false)}
+                        >
+                          ×
+                        </button>
+                      </header>
+                      <div className="inventory-transfer-fields">
+                        <label>
+                          <span>کالا</span>
+                          <select
+                            value={inventoryTransferItemId}
+                            onChange={(event) => {
+                              setInventoryTransferItemId(event.target.value)
+                              setInventoryTransferError('')
+                            }}
+                          >
+                            {inventoryTransferItems.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} — موجودی {formatStocktakeQuantity(item.stock)} {item.unit}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>انبار مقصد</span>
+                          <select
+                            value={inventoryTransferWarehouse}
+                            onChange={(event) => {
+                              setInventoryTransferWarehouse(event.target.value)
+                              setInventoryTransferError('')
+                            }}
+                          >
+                            {inventoryTransferWarehouses.map((warehouse) => (
+                              <option key={warehouse} value={warehouse}>{warehouse}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>مقدار انتقال</span>
+                          <input
+                            autoFocus
+                            inputMode="decimal"
+                            value={inventoryTransferQuantity}
+                            onChange={(event) => {
+                              setInventoryTransferQuantity(formatDecimalInput(event.target.value))
+                              setInventoryTransferError('')
+                            }}
+                            placeholder={`حداکثر ${formatStocktakeQuantity(
+                              inventoryTransferItems.find((item) => item.id === inventoryTransferItemId)?.stock ?? 0,
+                            )}`}
+                          />
+                        </label>
+                      </div>
+                      {inventoryTransferError && <p role="alert">{inventoryTransferError}</p>}
+                      <div className="inventory-transfer-actions">
+                        <button type="button" onClick={() => setInventoryTransferOpen(false)}>انصراف</button>
+                        <button type="submit" disabled={!inventoryTransferItems.length || !inventoryTransferWarehouses.length}>
+                          تأیید انتقال
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+              </section>
+            )}
             <section className="inventory-hero" aria-labelledby="inventory-title">
               <button
                 className="inventory-refresh"
@@ -12701,10 +13623,7 @@ function App() {
                     <button
                       className="inventory-stocktake-button"
                       type="button"
-                      onClick={() => {
-                        setInventoryWarehousesOpen(false)
-                        showComingSoon('انبارگردانی')
-                      }}
+                      onClick={openInventoryStocktake}
                     >
                       <Icon name="check" />
                       انبارگردانی
@@ -13185,6 +14104,23 @@ function App() {
                   <article
                     className="inventory-item"
                     key={item.id}
+                    tabIndex={0}
+                    aria-label={`جزئیات ${item.kind === 'خدمات' ? 'خدمت' : 'کالا'} ${item.name}`}
+                    onClick={(event) => {
+                      if (suppressInventoryActionClick.current) {
+                        suppressInventoryActionClick.current = false
+                        event.preventDefault()
+                        return
+                      }
+                      if (event.target instanceof Element && event.target.closest('button')) return
+                      setInventoryDetailItemId(item.id)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      setInventoryDetailItemId(item.id)
+                    }}
                     onContextMenu={item.kind !== 'تولید' ? (event) => event.preventDefault() : undefined}
                     onPointerDown={item.kind !== 'تولید'
                       ? (event) => startInventoryActionPress(event, {
@@ -13217,11 +14153,14 @@ function App() {
                         aria-haspopup="menu"
                         aria-expanded={(inventoryActionItem?.type === 'product' || inventoryActionItem?.type === 'service')
                           && inventoryActionItem.id === item.id}
-                        onClick={(event) => activateInventoryActionItem(event, {
-                          type: item.kind === 'خدمات' ? 'service' : 'product',
-                          name: item.name,
-                          id: item.id,
-                        })}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          activateInventoryActionItem(event, {
+                            type: item.kind === 'خدمات' ? 'service' : 'product',
+                            name: item.name,
+                            id: item.id,
+                          })
+                        }}
                       >
                         <span aria-hidden="true">⋮</span>
                       </button>
@@ -13247,6 +14186,108 @@ function App() {
                   </div>
                 )}
               </section>
+              {inventoryDetailItem && (
+                <div
+                  className="inventory-detail-backdrop"
+                  role="presentation"
+                  onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) setInventoryDetailItemId(null)
+                  }}
+                  onTouchStart={(event) => {
+                    if (event.target === event.currentTarget) setInventoryDetailItemId(null)
+                  }}
+                >
+                  <section
+                    className="inventory-detail-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="inventory-detail-title"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onTouchStart={(event) => event.stopPropagation()}
+                  >
+                    <header className="inventory-detail-header">
+                      <div>
+                        <span>{inventoryDetailItem.kind} · {inventoryDetailItem.warehouse ?? activeWarehouse}</span>
+                        <h2 id="inventory-detail-title">{inventoryDetailItem.name}</h2>
+                      </div>
+                      <button
+                        ref={inventoryDetailCloseButtonRef}
+                        type="button"
+                        aria-label="بستن جزئیات"
+                        onClick={() => setInventoryDetailItemId(null)}
+                      >
+                        ×
+                      </button>
+                    </header>
+                    <dl className="inventory-detail-properties">
+                      <div><dt>کد کالا</dt><dd>{inventoryDetailItem.code || '—'}</dd></div>
+                      <div><dt>گروه</dt><dd>{inventoryDetailItem.group || '—'}</dd></div>
+                      <div><dt>دسته‌بندی</dt><dd>{inventoryDetailItem.category || '—'}</dd></div>
+                      <div><dt>برند</dt><dd>{inventoryDetailItem.brand || '—'}</dd></div>
+                      <div><dt>بارکد</dt><dd>{inventoryDetailItem.barcode || '—'}</dd></div>
+                      <div><dt>واحد</dt><dd>{inventoryDetailItem.unit || '—'}</dd></div>
+                      {inventoryDetailItem.secondaryUnit && (
+                        <div>
+                          <dt>واحد دوم</dt>
+                          <dd>{inventoryDetailItem.secondaryUnit}{inventoryDetailItem.conversionRatio
+                            ? ` · هر ${inventoryDetailItem.secondaryUnit} برابر ${formatStocktakeQuantity(inventoryDetailItem.conversionRatio)} ${inventoryDetailItem.unit}`
+                            : ''}</dd>
+                        </div>
+                      )}
+                      {inventoryDetailItem.kind !== 'خدمات' && (
+                        <div><dt>موجودی فعلی</dt><dd>{formatStocktakeQuantity(inventoryDetailItem.stock)} {inventoryDetailItem.unit}</dd></div>
+                      )}
+                      {inventoryDetailItem.kind !== 'خدمات' && (
+                        <div><dt>قیمت خرید</dt><dd>{formatPersonBalance(inventoryDetailItem.purchasePrice)} ریال</dd></div>
+                      )}
+                      <div><dt>قیمت فروش</dt><dd>{formatPersonBalance(inventoryDetailItem.salePrice)} ریال</dd></div>
+                      <div><dt>تاریخ ثبت</dt><dd>{formatCalendarDate(new Date(`${inventoryDetailItem.createdAt.slice(0, 10)}T12:00:00Z`), 'persian')}</dd></div>
+                    </dl>
+                    <section className="inventory-detail-history" aria-labelledby="inventory-detail-history-title">
+                      <div className="inventory-detail-history-heading">
+                        <h3 id="inventory-detail-history-title">سوابق ورود و خروج</h3>
+                        <span>{inventoryDetailActivity.length} مورد</span>
+                      </div>
+                      {inventoryDetailActivity.length ? (
+                        <ol>
+                          {inventoryDetailActivity.map((activity) => (
+                            <li className={`inventory-detail-movement ${activity.direction}`} key={activity.id}>
+                              <span className="inventory-detail-movement-mark" aria-hidden="true">
+                                {activity.direction === 'in' ? '↓' : activity.direction === 'out' ? '↑' : '•'}
+                              </span>
+                              <div className="inventory-detail-movement-main">
+                                <strong>{activity.label}</strong>
+                                <span>
+                                  {formatCalendarDate(
+                                    new Date(`${activity.date}T12:00:00Z`),
+                                    activity.calendar,
+                                  )}
+                                  {activity.number ? ` · فاکتور ${activity.number}` : ''}
+                                  {activity.party ? ` · ${activity.party}` : ''}
+                                </span>
+                                {activity.warehouse && activity.source === 'stock' && (
+                                  <span>{activity.warehouse}</span>
+                                )}
+                              </div>
+                              <div className="inventory-detail-movement-value">
+                                <strong>
+                                  {activity.direction === 'in' ? '+' : activity.direction === 'out' ? '−' : ''}
+                                  {formatStocktakeQuantity(activity.quantity)} {activity.unit}
+                                </strong>
+                                {activity.total !== undefined && (
+                                  <span>{formatPersonBalance(activity.total)} ریال</span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="inventory-detail-history-empty">برای این مورد هنوز گردش ثبت‌شده‌ای وجود ندارد.</p>
+                      )}
+                    </section>
+                  </section>
+                </div>
+              )}
             </section>
 
             <button
