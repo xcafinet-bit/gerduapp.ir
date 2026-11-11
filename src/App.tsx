@@ -2383,6 +2383,8 @@ function App() {
   const homeContentRef = useRef<HTMLElement | null>(null)
   const homeScrollPositionRef = useRef<number | null>(null)
   const [activeSettingsSection, setActiveSettingsSection] = useState('')
+  const [supportOpen, setSupportOpen] = useState(false)
+  const [supportFaqOpen, setSupportFaqOpen] = useState(false)
   const [invoiceDesignOpen, setInvoiceDesignOpen] = useState(false)
   const [salesInvoiceLines, setSalesInvoiceLines] = useState<SalesInvoiceLine[]>([])
   const [salesInvoicePerson, setSalesInvoicePerson] = useState('')
@@ -6786,6 +6788,10 @@ function App() {
 
   const saveStore = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+
     if (editingStoreId === null) {
       const newStore = { ...storeFields, id: Date.now() }
       const creatingFirstStore = stores.length === 0
@@ -8493,7 +8499,12 @@ function App() {
       'فهرست هزینه‌ها',
       'فهرست دریافت‌ها',
       'فهرست پرداخت‌ها',
-    ].includes(activeTab) ? 'sales-invoice-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
+    ].includes(activeTab) ? 'sales-invoice-mode' : ''} ${[
+      'فاکتور فروش',
+      'فاکتور خرید',
+      'برگشت از فروش',
+      'برگشت به خرید',
+    ].includes(activeTab) ? 'sales-invoice-entry-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
       <header className="topbar">
         <div className="brand">
           <img
@@ -8566,20 +8577,15 @@ function App() {
                 <span className="auth-3d-spark spark-two">✧</span>
               </div>
               <div className="auth-visual-copy">
-                <span>حسابداری، ساده و شفاف</span>
                 <h1>مدیریت مالی هوشمند</h1>
                 <p>فروشگاه‌ها و امور مالی کسب‌وکارت را یک‌جا مدیریت کن.</p>
-              </div>
-              <div className="auth-visual-pills" aria-hidden="true">
-                <span><Icon name="chart" /> گزارش‌های روشن</span>
-                <span><Icon name="inventory" /> مدیریت فروشگاه</span>
               </div>
             </div>
 
             <div className="auth-panel">
               <div className="auth-form-heading">
                 <span className="auth-eyebrow">به حسابداری گردو خوش آمدی</span>
-                <h2>{authMode === 'login' ? 'ورود به حساب' : 'ساخت حساب کاربری'}</h2>
+                {authMode === 'register' && <h2>ساخت حساب کاربری</h2>}
                 <p>
                   {authMode === 'login'
                     ? 'برای ادامه، اطلاعات حساب خود را وارد کن.'
@@ -11721,29 +11727,6 @@ function App() {
               >
                 ⚙
               </button>
-              <button
-                className="sales-invoice-print"
-                type="button"
-                aria-label={returnPurchaseInvoiceMode
-                  ? 'چاپ فاکتور برگشت به خرید'
-                  : returnSalesInvoiceMode
-                    ? 'چاپ فاکتور برگشت از فروش'
-                    : purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
-                title={returnPurchaseInvoiceMode
-                  ? 'چاپ فاکتور برگشت به خرید'
-                  : returnSalesInvoiceMode
-                    ? 'چاپ فاکتور برگشت از فروش'
-                    : purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
-                onClick={() => returnPurchaseInvoiceMode
-                  ? printSalesInvoice('فاکتور برگشت به خرید')
-                  : returnSalesInvoiceMode
-                    ? printSalesInvoice('فاکتور برگشت از فروش')
-                    : purchaseInvoiceMode
-                      ? showSalesInvoiceShareNotice('چاپ فاکتور خرید در مرحلهٔ بعدی فعال می‌شود.')
-                      : printSalesInvoice()}
-              >
-                ▤
-              </button>
             </header>
 
             <div className="sales-invoice-content">
@@ -11770,9 +11753,7 @@ function App() {
                           : 'جست‌وجو و انتخاب طرف حساب'}
                       aria-required="true"
                       aria-invalid={Boolean(salesInvoicePartyError)}
-                      aria-describedby={salesInvoicePartyError
-                        ? 'sales-invoice-party-required sales-invoice-party-error'
-                        : 'sales-invoice-party-required'}
+                      aria-describedby={salesInvoicePartyError ? 'sales-invoice-party-error' : undefined}
                       aria-autocomplete="list"
                       aria-expanded={salesInvoicePersonOptionsOpen}
                       aria-controls="sales-invoice-person-options"
@@ -11855,15 +11836,6 @@ function App() {
                     +
                   </button>
                 </div>
-                <small id="sales-invoice-party-required" className="sales-invoice-party-required">
-                  {returnSalesInvoiceMode
-                      ? 'طرف‌حساب فاکتور برگشت از فروش'
-                      : returnPurchaseInvoiceMode
-                        ? 'انتخاب تأمین‌کننده برای فاکتور برگشت به خرید'
-                        : purchaseInvoiceMode
-                          ? 'انتخاب تأمین‌کننده برای ثبت فاکتور خرید الزامی است'
-                          : 'انتخاب طرف‌حساب برای ثبت فاکتور الزامی است'}
-                </small>
                 {salesInvoicePartyError && (
                   <small id="sales-invoice-party-error" className="sales-invoice-party-error" role="alert">
                     {salesInvoicePartyError}
@@ -16881,7 +16853,6 @@ function App() {
                           <label className="person-field person-field-name">
                             <span>نام و نام خانوادگی <b>*</b></span>
                             <input
-                              autoFocus
                               required
                               maxLength={80}
                               value={personFormFields.name}
@@ -17308,7 +17279,7 @@ function App() {
                 type="button"
                 onClick={() => (
                   item.label === 'پشتیبانی'
-                    ? openSupportChat()
+                    ? (setSupportFaqOpen(false), setSupportOpen(true))
                     : item.label === 'فروشگاه'
                       ? setActiveTab('فروشگاه')
                       : item.label === 'تنظیمات'
@@ -17456,6 +17427,104 @@ function App() {
           </>
         )}
       </main>
+
+      {supportOpen && (
+        <div
+          className="support-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSupportOpen(false)
+          }}
+        >
+          <section
+            className="support-page"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="support-page-title"
+          >
+            <div className="support-sheet-handle" aria-hidden="true" />
+            <header className="support-page-heading">
+              <span aria-hidden="true" />
+              <h1 id="support-page-title">پشتیبانی</h1>
+              <button
+                type="button"
+                aria-label="بستن پنل پشتیبانی"
+                onClick={() => setSupportOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="support-page-intro">
+              جهت ارتباط با پشتیبانی، یکی از پیام‌رسان‌های زیر را که در گوشی خود نصب دارید، انتخاب کنید.
+            </div>
+
+            <div className="support-options" aria-label="راه‌های ارتباط با پشتیبانی">
+              <div className="support-option-group">
+                <button
+                  className="support-option"
+                  type="button"
+                  aria-expanded={supportFaqOpen}
+                  onClick={() => setSupportFaqOpen((open) => !open)}
+                >
+                  <span className="support-option-chevron" aria-hidden="true">‹</span>
+                  <span className="support-option-label">سوالات متداول و پرتکرار</span>
+                  <span className="support-option-icon faq" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M9.6 9a2.5 2.5 0 1 1 4.4 1.6c-.8.9-2 1.2-2 2.7M12 16.8v.1" />
+                    </svg>
+                  </span>
+                </button>
+                {supportFaqOpen && (
+                  <div className="support-faq-content">
+                    محتوای سوالات متداول به‌زودی اضافه می‌شود. برای دریافت راهنمایی، از گفتگوی مستقیم داخل برنامه استفاده کنید.
+                  </div>
+                )}
+              </div>
+
+              <button className="support-option" type="button" onClick={openSupportChat}>
+                <span className="support-option-chevron" aria-hidden="true">‹</span>
+                <span className="support-option-label">ارتباط مستقیم از داخل برنامه</span>
+                <span className="support-option-icon chat" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M4 5.5h16v12H9l-5 3v-15Z" />
+                    <path d="M8 9h8M8 13h6" />
+                  </svg>
+                </span>
+              </button>
+
+              <button
+                className="support-option"
+                type="button"
+                onClick={() => setNotice('برای فعال‌سازی ارتباط واتساپ، اطلاعات تماس پشتیبانی لازم است.')}
+              >
+                <span className="support-option-chevron" aria-hidden="true">‹</span>
+                <span className="support-option-label">ارتباط از طریق واتساپ</span>
+                <span className="support-option-icon whatsapp" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M20 11.7a8 8 0 0 1-11.8 7L4 20l1.3-4A8 8 0 1 1 20 11.7Z" />
+                    <path d="M9 8.5c.3-.6.7-.5 1-.1l.8 1.2c.2.3.1.6-.2.9l-.5.5c.6 1.2 1.5 2.1 2.8 2.7l.5-.6c.2-.3.5-.3.8-.2l1.2.6c.4.2.5.6.2 1-.4.6-.9.9-1.6.9-2.2-.2-5.8-3.4-5.8-5.8 0-.5.3-.9.8-1.1Z" />
+                  </svg>
+                </span>
+              </button>
+
+              <button
+                className="support-option"
+                type="button"
+                onClick={() => setNotice('برای فعال‌سازی ارتباط ایتا، نشانی پشتیبانی لازم است.')}
+              >
+                <span className="support-option-chevron" aria-hidden="true">‹</span>
+                <span className="support-option-label">ارتباط از طریق ایتا</span>
+                <span className="support-option-icon eitaa" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M20.2 5.2 17 19c-.2 1-1 1.2-1.8.7l-4.8-3.5-2.3 2.2c-.3.3-.6.5-1.1.5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.3L4.6 12.6l-4-1.3c-.9-.3-.9-.9.2-1.3L19 3.4c.8-.3 1.5.2 1.2 1.8Z" />
+                  </svg>
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {moneyDocumentKind && (
         <div
