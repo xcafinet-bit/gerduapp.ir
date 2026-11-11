@@ -795,6 +795,8 @@ type SavedSalesInvoice = {
 const SALES_INVOICE_SETTINGS_STORAGE_KEY = 'trazino-sales-invoice-settings-v1'
 const SALES_INVOICES_STORAGE_KEY = 'trazino-sales-invoices-v1'
 const PURCHASE_INVOICES_STORAGE_KEY = 'trazino-purchase-invoices-v1'
+const RETURN_SALES_INVOICES_STORAGE_KEY = 'trazino-return-sales-invoices-v1'
+const RETURN_PURCHASE_INVOICES_STORAGE_KEY = 'trazino-return-purchase-invoices-v1'
 const MONEY_DOCUMENTS_STORAGE_KEY = 'trazino-money-documents-v1'
 const RECEIVED_CHECKS_STORAGE_KEY = 'trazino-received-checks-v1'
 const PAID_CHECKS_STORAGE_KEY = 'trazino-paid-checks-v1'
@@ -818,10 +820,24 @@ type StoredPurchaseInvoices = {
   error: string
 }
 
+type StoredReturnInvoices = {
+  invoices: SavedSalesInvoice[]
+  error: string
+}
+
+type ReturnInvoiceKind = 'sales' | 'purchase'
+
+type ReturnInvoiceDetail = {
+  kind: ReturnInvoiceKind
+  invoice: SavedSalesInvoice
+}
+
 function getInventoryItemActivity(
   item: InventoryRecord,
   salesInvoices: SavedSalesInvoice[],
   purchaseInvoices: SavedSalesInvoice[],
+  returnSalesInvoices: SavedSalesInvoice[],
+  returnPurchaseInvoices: SavedSalesInvoice[],
 ): InventoryDetailMovement[] {
   const activity: InventoryDetailMovement[] = []
   for (const invoice of purchaseInvoices) {
@@ -866,6 +882,35 @@ function getInventoryItemActivity(
       })
     }
   }
+  for (const [invoices, kind] of [
+    [returnSalesInvoices, 'sales-return'],
+    [returnPurchaseInvoices, 'purchase-return'],
+  ] as const) {
+    for (const invoice of invoices) {
+      for (const [index, line] of invoice.lines.entries()) {
+        if (line.itemId !== item.id) continue
+        const isSalesReturn = kind === 'sales-return'
+        activity.push({
+          id: `${invoice.id}-${line.itemId}-${index}-${kind}`,
+          source: 'invoice',
+          direction: item.kind === 'خدمات' ? 'info' : isSalesReturn ? 'in' : 'out',
+          label: item.kind === 'خدمات'
+            ? `ثبت خدمات در ${isSalesReturn ? 'برگشت از فروش' : 'برگشت به خرید'}`
+            : isSalesReturn ? 'ورود از برگشت فروش' : 'خروج از برگشت خرید',
+          date: invoice.date,
+          calendar: invoice.calendar,
+          createdAt: invoice.createdAt,
+          number: invoice.number,
+          party: invoice.buyerName,
+          quantity: line.quantity,
+          unit: line.unit,
+          unitPrice: line.unitPrice,
+          total: line.total,
+          warehouse: line.warehouse ?? item.warehouse,
+        })
+      }
+    }
+  }
   for (const movement of item.stockMovements ?? []) {
     const isIn = movement.kind === 'opening'
       || movement.kind === 'count-in'
@@ -895,7 +940,7 @@ function getInventoryItemActivity(
 }
 
 type MoneyDocumentKind = 'دریافت' | 'پرداخت' | 'هزینه' | 'درآمد'
-type MoneyDocumentFormKind = MoneyDocumentKind | 'دریافت چک' | 'پرداخت چک'
+type MoneyDocumentFormKind = MoneyDocumentKind | 'دریافت چک' | 'پرداخت چک' | 'خرج چک'
 type MoneyDocument = {
   id: string
   number: string
@@ -936,6 +981,16 @@ type CheckRecord = {
   note: string
   attachment?: { name: string; type: string; dataUrl: string }
   createdAt: string
+  transfer?: {
+    personId: string
+    personName: string
+    date: string
+    calendar: CalendarSystem
+    time: string
+    note: string
+    createdAt: string
+  }
+  clearedAt?: string
 }
 
 type StoredReceivedChecks = {
@@ -949,6 +1004,9 @@ type StoredPaidChecks = {
 }
 
 type SalesInvoiceListFilter = 'all' | 'current' | 'closed'
+type CheckListFilter = 'all' | 'uncleared' | 'overdue' | 'cleared'
+type CheckListKind = 'received' | 'paid'
+type CheckDetail = { kind: CheckListKind; checkId: string }
 
 function isSalesInvoiceTime(value: unknown): value is { hours: number; minutes: number } {
   if (!value || typeof value !== 'object') return false
@@ -1094,6 +1152,29 @@ function readStoredPurchaseInvoices(storeId: number | null = null): StoredPurcha
   }
 }
 
+function readStoredReturnInvoices(
+  key: typeof RETURN_SALES_INVOICES_STORAGE_KEY | typeof RETURN_PURCHASE_INVOICES_STORAGE_KEY,
+  kind: ReturnInvoiceKind,
+  storeId: number | null = null,
+): StoredReturnInvoices {
+  try {
+    const raw = readStoreData(key, storeId)
+    if (!raw) return { invoices: [], error: '' }
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.every(isSavedSalesInvoice)) {
+      throw new Error(`Invalid ${kind} return invoices`)
+    }
+    return { invoices: parsed, error: '' }
+  } catch {
+    return {
+      invoices: [],
+      error: kind === 'sales'
+        ? 'فاکتورهای برگشت از فروش قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.'
+        : 'فاکتورهای برگشت به خرید قابل خواندن نیستند؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
+    }
+  }
+}
+
 function isMoneyDocumentKind(value: unknown): value is MoneyDocumentKind {
   return value === 'دریافت' || value === 'پرداخت' || value === 'هزینه' || value === 'درآمد'
 }
@@ -1140,6 +1221,7 @@ function readStoredMoneyDocuments(storeId: number | null = null): StoredMoneyDoc
 function isCheckRecord(value: unknown): value is CheckRecord {
   if (!value || typeof value !== 'object') return false
   const check = value as Record<string, unknown>
+  const transfer = check.transfer as Record<string, unknown> | undefined
   return typeof check.id === 'string'
     && typeof check.number === 'string'
     && typeof check.personId === 'string'
@@ -1158,6 +1240,20 @@ function isCheckRecord(value: unknown): value is CheckRecord {
     && typeof check.time === 'string'
     && typeof check.note === 'string'
     && (check.attachment === undefined || isImageDataAttachment(check.attachment))
+    && (check.clearedAt === undefined
+      || (typeof check.clearedAt === 'string' && Number.isFinite(Date.parse(check.clearedAt))))
+    && (transfer === undefined || (
+      transfer !== null
+      && typeof transfer === 'object'
+      && typeof transfer.personId === 'string'
+      && typeof transfer.personName === 'string'
+      && typeof transfer.date === 'string'
+      && (transfer.calendar === 'persian' || transfer.calendar === 'islamic-umalqura' || transfer.calendar === 'gregory')
+      && typeof transfer.time === 'string'
+      && typeof transfer.note === 'string'
+      && typeof transfer.createdAt === 'string'
+      && Number.isFinite(Date.parse(transfer.createdAt))
+    ))
     && typeof check.createdAt === 'string'
     && Number.isFinite(Date.parse(check.createdAt))
 }
@@ -1615,6 +1711,8 @@ const STORE_DATA_KEYS = [
   SALES_INVOICE_SETTINGS_STORAGE_KEY,
   SALES_INVOICES_STORAGE_KEY,
   PURCHASE_INVOICES_STORAGE_KEY,
+  RETURN_SALES_INVOICES_STORAGE_KEY,
+  RETURN_PURCHASE_INVOICES_STORAGE_KEY,
   MONEY_DOCUMENTS_STORAGE_KEY,
   RECEIVED_CHECKS_STORAGE_KEY,
   PAID_CHECKS_STORAGE_KEY,
@@ -1673,6 +1771,8 @@ function isAccountingBackup(value: unknown): value is AccountingBackup {
         || key === ACCOUNT_TRANSFERS_STORAGE_KEY
         || key === SALES_INVOICES_STORAGE_KEY
         || key === PURCHASE_INVOICES_STORAGE_KEY
+        || key === RETURN_SALES_INVOICES_STORAGE_KEY
+        || key === RETURN_PURCHASE_INVOICES_STORAGE_KEY
         || key === MONEY_DOCUMENTS_STORAGE_KEY
         || key === RECEIVED_CHECKS_STORAGE_KEY
         || key === PAID_CHECKS_STORAGE_KEY
@@ -2290,6 +2390,12 @@ function App() {
   const [storedPurchaseInvoices, setStoredPurchaseInvoices] = useState<StoredPurchaseInvoices>(
     () => readStoredPurchaseInvoices(activeStoreId),
   )
+  const [storedReturnSalesInvoices, setStoredReturnSalesInvoices] = useState<StoredReturnInvoices>(
+    () => readStoredReturnInvoices(RETURN_SALES_INVOICES_STORAGE_KEY, 'sales', activeStoreId),
+  )
+  const [storedReturnPurchaseInvoices, setStoredReturnPurchaseInvoices] = useState<StoredReturnInvoices>(
+    () => readStoredReturnInvoices(RETURN_PURCHASE_INVOICES_STORAGE_KEY, 'purchase', activeStoreId),
+  )
   const [storedMoneyDocuments, setStoredMoneyDocuments] = useState<StoredMoneyDocuments>(
     () => readStoredMoneyDocuments(activeStoreId),
   )
@@ -2299,7 +2405,13 @@ function App() {
   const [storedPaidChecks, setStoredPaidChecks] = useState<StoredPaidChecks>(
     () => readStoredPaidChecks(activeStoreId),
   )
+  const [checkListFilter, setCheckListFilter] = useState<CheckListFilter>('all')
+  const [checkListSearchOpen, setCheckListSearchOpen] = useState(false)
+  const [checkListSearch, setCheckListSearch] = useState('')
+  const [checkDetail, setCheckDetail] = useState<CheckDetail | null>(null)
   const [moneyDocumentKind, setMoneyDocumentKind] = useState<MoneyDocumentFormKind | null>(null)
+  const [moneyDocumentSelectedCheckId, setMoneyDocumentSelectedCheckId] = useState('')
+  const [moneyDocumentCheckPickerOpen, setMoneyDocumentCheckPickerOpen] = useState(false)
   const [moneyDocumentFields, setMoneyDocumentFields] = useState({
     personId: '',
     accountId: '',
@@ -2347,6 +2459,15 @@ function App() {
   const [salesInvoiceListSearch, setSalesInvoiceListSearch] = useState('')
   const [purchaseInvoiceListSearchOpen, setPurchaseInvoiceListSearchOpen] = useState(false)
   const [purchaseInvoiceListSearch, setPurchaseInvoiceListSearch] = useState('')
+  const [returnInvoiceListSearchOpen, setReturnInvoiceListSearchOpen] = useState(false)
+  const [returnInvoiceListSearch, setReturnInvoiceListSearch] = useState('')
+  const [incomeListSearchOpen, setIncomeListSearchOpen] = useState(false)
+  const [incomeListSearch, setIncomeListSearch] = useState('')
+  const [expenseListSearchOpen, setExpenseListSearchOpen] = useState(false)
+  const [expenseListSearch, setExpenseListSearch] = useState('')
+  const [cashDocumentListSearchOpen, setCashDocumentListSearchOpen] = useState(false)
+  const [cashDocumentListSearch, setCashDocumentListSearch] = useState('')
+  const [returnInvoiceDetail, setReturnInvoiceDetail] = useState<ReturnInvoiceDetail | null>(null)
   const [salesInvoiceConfirmation, setSalesInvoiceConfirmation] = useState<SavedSalesInvoice | null>(null)
   const [salesInvoiceOpenedFromList, setSalesInvoiceOpenedFromList] = useState(false)
   const [salesInvoiceMoreOpen, setSalesInvoiceMoreOpen] = useState(false)
@@ -2955,8 +3076,8 @@ function App() {
   const returnPurchaseInvoiceMode = activeTab === 'برگشت به خرید'
   const returnInvoiceMode = returnSalesInvoiceMode || returnPurchaseInvoiceMode
   const purchaseInvoicePartyMode = purchaseInvoiceMode || returnPurchaseInvoiceMode
-  const returnSalesInvoiceNumber = `۲۳۰۰۰۰۰${formatPersonCode(storedSalesInvoices.invoices.length + 1)}`
-  const returnPurchaseInvoiceNumber = `۲۵۰۰۰۰۰${formatPersonCode(storedPurchaseInvoices.invoices.length + 1)}`
+  const returnSalesInvoiceNumber = `۲۳۰۰۰۰۰${formatPersonCode(storedReturnSalesInvoices.invoices.length + 1)}`
+  const returnPurchaseInvoiceNumber = `۲۵۰۰۰۰۰${formatPersonCode(storedReturnPurchaseInvoices.invoices.length + 1)}`
   const purchaseInvoiceNumber = `۲۴۰۰۰۰${formatPersonCode(storedPurchaseInvoices.invoices.length + 1)}`
   const salesInvoiceListRows = [...storedSalesInvoices.invoices]
     .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
@@ -2971,6 +3092,65 @@ function App() {
       const query = purchaseInvoiceListSearch.trim().toLocaleLowerCase()
       return !query || `${invoice.number} ${invoice.buyerName}`.toLocaleLowerCase().includes(query)
     })
+  const returnInvoiceListRows = activeTab === 'فهرست برگشت از فروش'
+    ? [...storedReturnSalesInvoices.invoices]
+    : [...storedReturnPurchaseInvoices.invoices]
+  const filteredReturnInvoiceListRows = returnInvoiceListRows
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((invoice) => {
+      const query = returnInvoiceListSearch.trim().toLocaleLowerCase()
+      return !query || `${invoice.number} ${invoice.buyerName}`.toLocaleLowerCase().includes(query)
+    })
+  const checkListKind: CheckListKind = activeTab === 'فهرست چک‌های پرداختی' ? 'paid' : 'received'
+  const checkListState = checkListKind === 'received' ? storedReceivedChecks : storedPaidChecks
+  const checkListToday = todayInvoiceDate.toISOString().slice(0, 10)
+  const filteredCheckListRows = [...checkListState.checks]
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((check) => {
+      const isOverdue = !check.clearedAt && check.dueDate < checkListToday
+      if (checkListFilter === 'cleared' && !check.clearedAt) return false
+      if (checkListFilter === 'overdue' && !isOverdue) return false
+      if (checkListFilter === 'uncleared' && (check.clearedAt || isOverdue)) return false
+      const query = checkListSearch.trim().toLocaleLowerCase()
+      return !query || `${check.number} ${check.sayadiId} ${check.bankName} ${check.personName} ${check.dueDate}`
+        .toLocaleLowerCase()
+        .includes(query)
+    })
+  const incomeListRows = storedMoneyDocuments.documents
+    .filter((document) => document.kind === 'درآمد')
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((document) => {
+      const accountName = storedAccounts.accounts.find((account) => account.id === document.accountId)?.name ?? ''
+      const query = incomeListSearch.trim().toLocaleLowerCase()
+      return !query || `${document.number} ${document.description} ${document.amount} ${accountName}`
+        .toLocaleLowerCase()
+        .includes(query)
+    })
+  const expenseListRows = storedMoneyDocuments.documents
+    .filter((document) => document.kind === 'هزینه')
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((document) => {
+      const accountName = storedAccounts.accounts.find((account) => account.id === document.accountId)?.name ?? ''
+      const query = expenseListSearch.trim().toLocaleLowerCase()
+      return !query || `${document.number} ${document.description} ${document.amount} ${accountName}`
+        .toLocaleLowerCase()
+        .includes(query)
+    })
+  const cashDocumentListKind = activeTab === 'فهرست پرداخت‌ها' ? 'پرداخت' : 'دریافت'
+  const cashDocumentListRows = storedMoneyDocuments.documents
+    .filter((document) => document.kind === cashDocumentListKind)
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .filter((document) => {
+      const accountName = storedAccounts.accounts.find((account) => account.id === document.accountId)?.name ?? ''
+      const query = cashDocumentListSearch.trim().toLocaleLowerCase()
+      return !query || `${document.number} ${document.personName} ${document.description} ${document.amount} ${accountName}`
+        .toLocaleLowerCase()
+        .includes(query)
+    })
+  const selectedCheckDetail = checkDetail
+    ? (checkDetail.kind === 'received' ? storedReceivedChecks.checks : storedPaidChecks.checks)
+      .find((check) => check.id === checkDetail.checkId) ?? null
+    : null
   const salesInvoiceReceivedTotal = (salesInvoiceConfirmation?.receipts ?? [])
     .reduce((total, receipt) => total + receipt.amount, 0)
   const salesInvoiceRemainingTotal = Math.max(
@@ -3067,6 +3247,8 @@ function App() {
         inventoryDetailItem,
         storedSalesInvoices.invoices,
         storedPurchaseInvoices.invoices,
+        storedReturnSalesInvoices.invoices,
+        storedReturnPurchaseInvoices.invoices,
       )
     : []
   const inventoryShareTaxonomy = inventoryShareSetting.kind === 'خدمات'
@@ -3601,6 +3783,8 @@ function App() {
     setStoredAccountTransfers(readStoredAccountTransfers(storeId))
     setStoredSalesInvoices(readStoredSalesInvoices(storeId))
     setStoredPurchaseInvoices(readStoredPurchaseInvoices(storeId))
+    setStoredReturnSalesInvoices(readStoredReturnInvoices(RETURN_SALES_INVOICES_STORAGE_KEY, 'sales', storeId))
+    setStoredReturnPurchaseInvoices(readStoredReturnInvoices(RETURN_PURCHASE_INVOICES_STORAGE_KEY, 'purchase', storeId))
     setStoredMoneyDocuments(readStoredMoneyDocuments(storeId))
     setStoredReceivedChecks(readStoredReceivedChecks(storeId))
     setStoredPaidChecks(readStoredPaidChecks(storeId))
@@ -4076,12 +4260,14 @@ function App() {
         : person.role === 'تأمین‌کننده'
     )) ?? storedPeopleState.people[0]
     setMoneyDocumentKind(kind)
+    if (kind === 'خرج چک') setStoredReceivedChecks(readStoredReceivedChecks(activeStoreId))
+    setMoneyDocumentSelectedCheckId('')
+    setMoneyDocumentCheckPickerOpen(false)
     setMoneyDocumentCalendar('persian')
     setMoneyDocumentFields({
-      personId: kind === 'دریافت' || kind === 'پرداخت'
+      personId: kind !== 'خرج چک' && (kind === 'دریافت' || kind === 'پرداخت'
         || kind === 'دریافت چک' || kind === 'پرداخت چک'
-        ? defaultPerson?.id ?? ''
-        : '',
+        ) ? defaultPerson?.id ?? '' : '',
       accountId: storedAccounts.accounts[0]?.id ?? '',
       amount: '',
       description: '',
@@ -4203,6 +4389,53 @@ function App() {
 
     try {
       if (!activeStoreId) throw new Error('برای ثبت سند ابتدا یک فروشگاه را انتخاب کنید.')
+      if (moneyDocumentKind === 'خرج چک') {
+        if (storedPeopleState.error) throw new Error(storedPeopleState.error)
+        const person = storedPeopleState.people.find((item) => item.id === moneyDocumentFields.personId)
+        if (!person) throw new Error('شخص مقصد واگذاری را انتخاب کنید.')
+
+        const date = new Date(`${moneyDocumentFields.date}T12:00:00Z`)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(moneyDocumentFields.date)
+          || Number.isNaN(date.getTime())
+          || date.toISOString().slice(0, 10) !== moneyDocumentFields.date) {
+          throw new Error('تاریخ واگذاری را به‌درستی وارد کنید.')
+        }
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(moneyDocumentFields.time)) {
+          throw new Error('ساعت واگذاری را به‌درستی وارد کنید.')
+        }
+
+        const receivedChecks = readStoredReceivedChecks(activeStoreId)
+        if (receivedChecks.error) throw new Error(receivedChecks.error)
+        const checkIndex = receivedChecks.checks.findIndex((check) => (
+          check.id === moneyDocumentSelectedCheckId && !check.transfer
+        ))
+        if (checkIndex === -1) throw new Error('یک چک دریافتیِ آمادهٔ واگذاری انتخاب کنید.')
+
+        const selectedCheck = receivedChecks.checks[checkIndex]
+        const checks = receivedChecks.checks.map((check, index) => index === checkIndex
+          ? {
+            ...check,
+            transfer: {
+              personId: person.id,
+              personName: person.name,
+              date: moneyDocumentFields.date,
+              calendar: moneyDocumentCalendar,
+              time: moneyDocumentFields.time,
+              note: moneyDocumentFields.note.trim(),
+              createdAt: new Date().toISOString(),
+            },
+          }
+          : check)
+        const storageKey = getActiveStoreDataStorageKey(RECEIVED_CHECKS_STORAGE_KEY, activeStoreId)
+        localStorage.setItem(storageKey, JSON.stringify(checks))
+        setStoredReceivedChecks({ checks, error: '' })
+        setMoneyDocumentKind(null)
+        setMoneyDocumentCheckPickerOpen(false)
+        setNotice(`چک شمارهٔ ${selectedCheck.number} به ${person.name} واگذار شد.`)
+        window.setTimeout(() => setNotice(''), 3000)
+        return
+      }
+
       if (moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') {
         const isReceivedCheck = moneyDocumentKind === 'دریافت چک'
         if (storedPeopleState.error) throw new Error(storedPeopleState.error)
@@ -4211,11 +4444,6 @@ function App() {
 
         const sayadiId = normalizeAccountDigits(moneyDocumentFields.sayadiId)
         if (sayadiId.length !== 16) throw new Error('شناسهٔ صیادی باید ۱۶ رقم باشد.')
-        if (!moneyDocumentFields.leafNumber.trim()) throw new Error('شمارهٔ برگ چک را وارد کنید.')
-        if (!moneyDocumentFields.serial.trim()) throw new Error('سریال چک را وارد کنید.')
-        if (normalizeAccountDigits(moneyDocumentFields.nationalId).length !== 10) {
-          throw new Error('کد ملی باید ۱۰ رقم باشد.')
-        }
         const dueDate = new Date(`${moneyDocumentFields.dueDate}T12:00:00Z`)
         if (!/^\d{4}-\d{2}-\d{2}$/.test(moneyDocumentFields.dueDate)
           || Number.isNaN(dueDate.getTime())
@@ -4790,6 +5018,34 @@ function App() {
     window.setTimeout(() => setNotice(''), 2600)
   }
 
+  const setCheckClearedStatus = (kind: CheckListKind, checkId: string, cleared: boolean) => {
+    try {
+      if (!activeStoreId) throw new Error('برای به‌روزرسانی چک ابتدا یک فروشگاه را انتخاب کنید.')
+      const current = kind === 'received'
+        ? readStoredReceivedChecks(activeStoreId)
+        : readStoredPaidChecks(activeStoreId)
+      if (current.error) throw new Error(current.error)
+      const existingCheck = current.checks.find((check) => check.id === checkId)
+      if (!existingCheck) throw new Error('چک در فهرست پیدا نشد؛ فهرست را به‌روزرسانی کنید.')
+      const updatedCheck: CheckRecord = { ...existingCheck }
+      if (cleared) updatedCheck.clearedAt = new Date().toISOString()
+      else delete updatedCheck.clearedAt
+      const checks = current.checks.map((check) => check.id === checkId ? updatedCheck : check)
+      const storageKey = getActiveStoreDataStorageKey(
+        kind === 'received' ? RECEIVED_CHECKS_STORAGE_KEY : PAID_CHECKS_STORAGE_KEY,
+        activeStoreId,
+      )
+      localStorage.setItem(storageKey, JSON.stringify(checks))
+      if (kind === 'received') setStoredReceivedChecks({ checks, error: '' })
+      else setStoredPaidChecks({ checks, error: '' })
+      setNotice(cleared ? 'وضعیت چک به «پاس شده» تغییر کرد.' : 'چک دوباره به فهرست پاس‌نشده‌ها برگشت.')
+      window.setTimeout(() => setNotice(''), 3000)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'به‌روزرسانی وضعیت چک انجام نشد.')
+      window.setTimeout(() => setNotice(''), 4000)
+    }
+  }
+
   const releaseSalesInvoiceAttachmentUrl = (url: string) => {
     URL.revokeObjectURL(url)
     salesInvoiceAttachmentUrlsRef.current.delete(url)
@@ -4968,7 +5224,11 @@ function App() {
     }
   }
 
-  const getSalesInvoicePrintDocument = (autoPrint: boolean, savedInvoice?: SavedSalesInvoice) => {
+  const getSalesInvoicePrintDocument = (
+    autoPrint: boolean,
+    savedInvoice?: SavedSalesInvoice,
+    documentTitle = 'فاکتور فروش',
+  ) => {
     const printNumber = savedInvoice?.number ?? salesInvoiceNumber
     const printDate = savedInvoice
       ? new Date(`${savedInvoice.date}T12:00:00Z`)
@@ -5038,7 +5298,7 @@ function App() {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>فاکتور فروش ${escapeHtml(printNumber)}</title>
+          <title>${escapeHtml(documentTitle)} ${escapeHtml(printNumber)}</title>
           <style>
             @page{size:A4 portrait;margin:0}
             *{box-sizing:border-box}
@@ -5091,7 +5351,7 @@ function App() {
             <div class="ornament top"></div>
             <header class="head">
               <div><span class="brand">${escapeHtml(activeStore?.name || 'حسابداری گردو')}</span><span>محل لوگو فروشگاه</span></div>
-              <div><h1>فاکتور فروش</h1><span>نسخهٔ فروشنده</span></div>
+              <div><h1>${escapeHtml(documentTitle)}</h1><span>نسخهٔ فروشنده</span></div>
               <div class="meta"><span>شماره<strong>${escapeHtml(printNumber)}</strong></span><span>تاریخ<strong>${escapeHtml(formatCalendarDate(printDate, printCalendar))}</strong></span><span>ساعت<strong>${formatClockNumber(printTime.hours).padStart(2, '۰')}:${formatClockNumber(printTime.minutes).padStart(2, '۰')}</strong></span></div>
             </header>
             <section class="party">
@@ -5129,7 +5389,7 @@ function App() {
       </html>`
   }
 
-  const printSalesInvoice = () => {
+  const printSalesInvoice = (documentTitle = 'فاکتور فروش') => {
     if (salesInvoiceLines.length === 0) {
       setNotice('برای چاپ فاکتور، ابتدا کالا یا خدمات اضافه کنید.')
       window.setTimeout(() => setNotice(''), 2600)
@@ -5142,7 +5402,19 @@ function App() {
       window.setTimeout(() => setNotice(''), 3000)
       return
     }
-    printWindow.document.write(getSalesInvoicePrintDocument(true))
+    printWindow.document.write(getSalesInvoicePrintDocument(true, undefined, documentTitle))
+    printWindow.document.close()
+  }
+
+  const printReturnInvoice = (detail: ReturnInvoiceDetail) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      setNotice('پنجرهٔ چاپ باز نشد. اجازهٔ بازشدن پنجرهٔ جدید را بررسی کنید.')
+      window.setTimeout(() => setNotice(''), 3000)
+      return
+    }
+    const title = detail.kind === 'sales' ? 'فاکتور برگشت از فروش' : 'فاکتور برگشت به خرید'
+    printWindow.document.write(getSalesInvoicePrintDocument(true, detail.invoice, title))
     printWindow.document.close()
   }
 
@@ -5768,6 +6040,206 @@ function App() {
       setSalesInvoiceSaveError(error instanceof Error
         ? error.message
         : 'ثبت فاکتور خرید انجام نشد؛ دوباره تلاش کنید.')
+    } finally {
+      salesInvoiceSavingRef.current = false
+      setSalesInvoiceSaving(false)
+    }
+  }
+
+  const saveReturnInvoice = async () => {
+    if (salesInvoiceSavingRef.current) return
+    salesInvoiceSavingRef.current = true
+    setSalesInvoiceSaving(true)
+    setSalesInvoiceSaveError('')
+
+    try {
+      if (!activeStoreId) throw new Error('برای ثبت فاکتور برگشت ابتدا یک فروشگاه را انتخاب کنید.')
+      if (storedInventoryRecords.error) throw new Error(storedInventoryRecords.error)
+      if (storedPeopleState.error) throw new Error(storedPeopleState.error)
+      if (!salesInvoiceLines.length) throw new Error('برای ثبت فاکتور برگشت، ابتدا کالا یا خدمات اضافه کنید.')
+      if (!Number.isSafeInteger(salesInvoiceTotal)) throw new Error('مبلغ فاکتور برگشت معتبر نیست.')
+      if (!selectedSalesInvoicePerson) {
+        throw new Error(returnPurchaseInvoiceMode
+          ? 'برای ثبت برگشت به خرید، تأمین‌کننده را انتخاب کنید.'
+          : 'برای ثبت برگشت از فروش، طرف‌حساب را انتخاب کنید.')
+      }
+      if (returnPurchaseInvoiceMode && selectedSalesInvoicePerson.role !== 'تأمین‌کننده') {
+        throw new Error('برای برگشت به خرید، انتخاب تأمین‌کننده الزامی است.')
+      }
+
+      const returnKind: ReturnInvoiceKind = returnPurchaseInvoiceMode ? 'purchase' : 'sales'
+      const returnStorageKey = returnPurchaseInvoiceMode
+        ? RETURN_PURCHASE_INVOICES_STORAGE_KEY
+        : RETURN_SALES_INVOICES_STORAGE_KEY
+      const existingReturns = readStoredReturnInvoices(
+        returnStorageKey,
+        returnKind,
+        activeStoreId,
+      )
+      if (existingReturns.error) throw new Error(existingReturns.error)
+
+      const nowIso = now.toISOString()
+      const itemById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
+      const returnLines: SavedSalesInvoiceLine[] = salesInvoiceLines.map((line) => {
+        const item = itemById.get(line.itemId)
+        if (!item) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
+        const unitPrice = line.unitPrice ?? (
+          returnPurchaseInvoiceMode ? item.purchasePrice : item.salePrice
+        )
+        const total = Math.max(0, unitPrice * line.quantity - line.discount)
+        if (!Number.isFinite(total)) throw new Error(`مبلغ «${item.name}» معتبر نیست.`)
+        return {
+          itemId: item.id,
+          warehouse: line.warehouse ?? item.warehouse ?? (
+            item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
+          ),
+          description: line.description || item.name,
+          kind: item.kind,
+          unit: item.unit,
+          quantity: line.quantity,
+          unitPrice,
+          discount: line.discount,
+          total,
+        }
+      })
+
+      const quantityDeltas = new Map<string, number>()
+      for (const line of returnLines) {
+        if (line.kind === 'خدمات') continue
+        const signedQuantity = line.quantity * (returnPurchaseInvoiceMode ? -1 : 1)
+        quantityDeltas.set(line.itemId, (quantityDeltas.get(line.itemId) ?? 0) + signedQuantity)
+      }
+      const updatedItemById = new Map<string, InventoryRecord>()
+      for (const [itemId, quantityDelta] of quantityDeltas) {
+        const item = itemById.get(itemId)
+        if (!item) throw new Error('یکی از کالاهای فاکتور دیگر در فهرست موجود نیست.')
+        const nextStock = item.stock + quantityDelta
+        if (!Number.isFinite(nextStock) || nextStock < 0) {
+          throw new Error(`موجودی «${item.name}» برای ثبت این برگشت کافی نیست.`)
+        }
+        updatedItemById.set(itemId, { ...item, stock: nextStock, lastMovementAt: nowIso })
+      }
+      const updatedInventory = [
+        ...storedInventoryRecords.items.filter((item) => !updatedItemById.has(item.id)),
+        ...storedInventoryRecords.items
+          .filter((item) => updatedItemById.has(item.id))
+          .map((item) => updatedItemById.get(item.id)!),
+      ]
+
+      const attachment = salesInvoiceAttachment
+        ? await new Promise<{ name: string; type: string; dataUrl: string }>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              resolve({
+                name: salesInvoiceAttachment.file.name || 'تصویر فاکتور برگشت',
+                type: salesInvoiceAttachment.file.type,
+                dataUrl: reader.result,
+              })
+            } else {
+              reject(new Error('خواندن تصویر پیوست فاکتور برگشت انجام نشد.'))
+            }
+          }
+          reader.onerror = () => reject(new Error('خواندن تصویر پیوست فاکتور برگشت انجام نشد.'))
+          reader.readAsDataURL(salesInvoiceAttachment.file)
+        })
+        : undefined
+
+      const invoice: SavedSalesInvoice = {
+        id: `return-${returnKind}-invoice-${activeStoreId}-${returnKind === 'sales'
+          ? returnSalesInvoiceNumber
+          : returnPurchaseInvoiceNumber}`,
+        number: returnKind === 'sales' ? returnSalesInvoiceNumber : returnPurchaseInvoiceNumber,
+        date: getIranDateValue(salesInvoiceDate),
+        calendar: salesInvoiceCalendar,
+        time: salesInvoiceTime,
+        personId: selectedSalesInvoicePerson.id,
+        buyerName: selectedSalesInvoicePerson.name,
+        lines: returnLines,
+        adjustments: salesInvoiceAdjustments,
+        subtotal: salesInvoiceSubtotal,
+        total: salesInvoiceTotal,
+        note: salesInvoiceNote.trim(),
+        ...(attachment ? { attachment } : {}),
+        createdAt: nowIso,
+      }
+
+      const signedBalance = selectedSalesInvoicePerson.accountStatus === 'بدهکاران'
+        ? selectedSalesInvoicePerson.balance
+        : selectedSalesInvoicePerson.accountStatus === 'بستانکاران'
+          ? -selectedSalesInvoicePerson.balance
+          : 0
+      const nextBalance = signedBalance + invoice.total * (returnPurchaseInvoiceMode ? 1 : -1)
+      const nextTransactionCount = (selectedSalesInvoicePerson.transactionCount ?? 0) + 1
+      if (!Number.isSafeInteger(nextBalance) || !Number.isSafeInteger(nextTransactionCount)) {
+        throw new Error('ماندهٔ طرف‌حساب پس از ثبت فاکتور برگشت معتبر نیست.')
+      }
+      const updatedPerson: PersonRecord = {
+        ...selectedSalesInvoicePerson,
+        accountStatus: nextBalance > 0
+          ? 'بدهکاران'
+          : nextBalance < 0 ? 'بستانکاران' : 'تسویه شده',
+        balance: Math.abs(nextBalance),
+        transactionCount: nextTransactionCount,
+      }
+      const updatedPeople = [
+        ...storedPeopleState.people.filter((person) => person.id !== updatedPerson.id),
+        updatedPerson,
+      ]
+      const invoiceKey = getActiveStoreDataStorageKey(returnStorageKey, activeStoreId)
+      const inventoryKey = getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId)
+      const peopleKey = getActiveStoreDataStorageKey(PEOPLE_STORAGE_KEY, activeStoreId)
+      const previousValues = new Map<string, string | null>()
+      try {
+        previousValues.set(invoiceKey, localStorage.getItem(invoiceKey))
+        previousValues.set(inventoryKey, localStorage.getItem(inventoryKey))
+        previousValues.set(peopleKey, localStorage.getItem(peopleKey))
+      } catch {
+        throw new Error('خواندن اطلاعات قبلی برای ثبت فاکتور برگشت انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+      }
+
+      try {
+        localStorage.setItem(invoiceKey, JSON.stringify([...existingReturns.invoices, invoice]))
+        localStorage.setItem(inventoryKey, JSON.stringify(updatedInventory))
+        localStorage.setItem(peopleKey, JSON.stringify(updatedPeople))
+      } catch {
+        let rollbackFailed = false
+        for (const [key, value] of previousValues) {
+          try {
+            if (value === null) localStorage.removeItem(key)
+            else localStorage.setItem(key, value)
+          } catch {
+            rollbackFailed = true
+          }
+        }
+        throw new Error(rollbackFailed
+          ? 'ثبت فاکتور برگشت کامل نشد و بازگردانی همهٔ اطلاعات ممکن نبود؛ موجودی و مانده‌ها را بررسی کنید.'
+          : 'ذخیرهٔ فاکتور برگشت انجام نشد؛ موجودی و ماندهٔ طرف‌حساب بازگردانده شد.')
+      }
+
+      setStoredInventoryRecords({ items: updatedInventory, error: '' })
+      setStoredPeopleState({ people: updatedPeople, error: '' })
+      if (returnKind === 'sales') {
+        setStoredReturnSalesInvoices({ invoices: [...existingReturns.invoices, invoice], error: '' })
+        setActiveTab('فهرست برگشت از فروش')
+      } else {
+        setStoredReturnPurchaseInvoices({ invoices: [...existingReturns.invoices, invoice], error: '' })
+        setActiveTab('فهرست برگشت به خرید')
+      }
+      setSalesInvoiceLines([])
+      setSalesInvoicePerson('')
+      setSalesInvoiceNote('')
+      setSalesInvoiceAdjustments([])
+      setSalesInvoiceAttachment(null)
+      setSalesInvoiceDraftAttachment(null)
+      setNotice(returnKind === 'sales'
+        ? 'فاکتور برگشت از فروش ثبت شد؛ موجودی و ماندهٔ طرف‌حساب به‌روز شد.'
+        : 'فاکتور برگشت به خرید ثبت شد؛ موجودی و ماندهٔ تأمین‌کننده به‌روز شد.')
+      window.setTimeout(() => setNotice(''), 3500)
+    } catch (error) {
+      setSalesInvoiceSaveError(error instanceof Error
+        ? error.message
+        : 'ثبت فاکتور برگشت انجام نشد؛ دوباره تلاش کنید.')
     } finally {
       salesInvoiceSavingRef.current = false
       setSalesInvoiceSaving(false)
@@ -7995,7 +8467,22 @@ function App() {
   const visibleAccounts = storedAccounts.accounts.filter((account) => account.kind === accountListFilter)
 
   return (
-    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${activeTab === 'فاکتور فروش' || activeTab === 'فاکتور خرید' || activeTab === 'برگشت از فروش' || activeTab === 'برگشت به خرید' ? 'sales-invoice-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
+    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${[
+      'فاکتور فروش',
+      'فاکتور خرید',
+      'برگشت از فروش',
+      'برگشت به خرید',
+      'فهرست برگشت از فروش',
+      'فهرست برگشت به خرید',
+      'جزئیات فاکتور برگشت',
+      'فهرست چک‌های دریافتی',
+      'فهرست چک‌های پرداختی',
+      'جزئیات چک',
+      'فهرست درآمدها',
+      'فهرست هزینه‌ها',
+      'فهرست دریافت‌ها',
+      'فهرست پرداخت‌ها',
+    ].includes(activeTab) ? 'sales-invoice-mode' : ''}`} data-theme={theme} data-color-theme={colorTheme} dir="rtl">
       <header className="topbar">
         <div className="brand">
           <img
@@ -8658,7 +9145,7 @@ function App() {
                       <button
                         className="invoice-template-download"
                         type="button"
-                        onClick={printSalesInvoice}
+                        onClick={() => printSalesInvoice()}
                       >
                         چاپ همین فاکتور
                       </button>
@@ -9331,6 +9818,666 @@ function App() {
               </section>
             </section>
           </div>
+        ) : activeTab === 'جزئیات چک' && checkDetail && selectedCheckDetail ? (
+          <div className="check-detail-page">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label="بازگشت به فهرست چک‌ها"
+                onClick={() => setActiveTab(checkDetail.kind === 'received'
+                  ? 'فهرست چک‌های دریافتی'
+                  : 'فهرست چک‌های پرداختی')}
+              >
+                ‹
+              </button>
+              <h1>{checkDetail.kind === 'received' ? 'جزئیات چک دریافتی' : 'جزئیات چک پرداختی'}</h1>
+              <span />
+            </header>
+            <main className="check-detail-content">
+              <section className={`check-detail-card${selectedCheckDetail.clearedAt ? ' cleared' : ''}`}>
+                <div className="check-detail-card-heading">
+                  <span className="check-detail-icon" aria-hidden="true">▤</span>
+                  <div>
+                    <small>{selectedCheckDetail.bankName}</small>
+                    <h2>چک شمارهٔ {selectedCheckDetail.number}</h2>
+                  </div>
+                  <span className={`check-status-badge ${selectedCheckDetail.clearedAt
+                    ? 'cleared'
+                    : selectedCheckDetail.dueDate < checkListToday ? 'overdue' : 'uncleared'}`}>
+                    {selectedCheckDetail.clearedAt
+                      ? 'پاس شده'
+                      : selectedCheckDetail.dueDate < checkListToday ? 'عقب افتاده' : 'پاس نشده'}
+                  </span>
+                </div>
+                <strong className="check-detail-amount">
+                  {formatPersonBalance(selectedCheckDetail.amount)}
+                  <small>ریال</small>
+                </strong>
+                <dl className="check-detail-grid">
+                  <div><dt>طرف حساب</dt><dd>{selectedCheckDetail.personName}</dd></div>
+                  <div><dt>شناسهٔ صیادی</dt><dd>{selectedCheckDetail.sayadiId}</dd></div>
+                  <div><dt>تاریخ ثبت</dt><dd>{formatCalendarDate(
+                    new Date(`${selectedCheckDetail.date}T12:00:00Z`),
+                    selectedCheckDetail.calendar,
+                  )}</dd></div>
+                  <div><dt>تاریخ سررسید</dt><dd>{formatCalendarDate(
+                    new Date(`${selectedCheckDetail.dueDate}T12:00:00Z`),
+                    selectedCheckDetail.calendar,
+                  )}</dd></div>
+                  {selectedCheckDetail.transfer && (
+                    <>
+                      <div><dt>واگذار شده به</dt><dd>{selectedCheckDetail.transfer.personName}</dd></div>
+                      <div><dt>تاریخ واگذاری</dt><dd>{formatCalendarDate(
+                        new Date(`${selectedCheckDetail.transfer.date}T12:00:00Z`),
+                        selectedCheckDetail.transfer.calendar,
+                      )}</dd></div>
+                    </>
+                  )}
+                  {selectedCheckDetail.note && (
+                    <div className="check-detail-note"><dt>یادداشت</dt><dd>{selectedCheckDetail.note}</dd></div>
+                  )}
+                </dl>
+              </section>
+            </main>
+            <footer className="sales-invoice-list-footer check-detail-footer" aria-label="عملیات چک">
+              <button
+                type="button"
+                onClick={() => setActiveTab(checkDetail.kind === 'received'
+                  ? 'فهرست چک‌های دریافتی'
+                  : 'فهرست چک‌های پرداختی')}
+              >
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button
+                type="button"
+                onClick={() => setCheckClearedStatus(
+                  checkDetail.kind,
+                  selectedCheckDetail.id,
+                  !selectedCheckDetail.clearedAt,
+                )}
+              >
+                <span aria-hidden="true">{selectedCheckDetail.clearedAt ? '↶' : '✓'}</span>
+                {selectedCheckDetail.clearedAt ? 'بازگرداندن به پاس‌نشده' : 'ثبت پاس شدن چک'}
+              </button>
+            </footer>
+          </div>
+        ) : activeTab === 'فهرست چک‌های دریافتی' || activeTab === 'فهرست چک‌های پرداختی' ? (
+          <section className="sales-invoice-list-page check-list-page" aria-labelledby="check-list-title">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label="به‌روزرسانی فهرست چک‌ها"
+                onClick={() => {
+                  if (checkListKind === 'received') setStoredReceivedChecks(readStoredReceivedChecks(activeStoreId))
+                  else setStoredPaidChecks(readStoredPaidChecks(activeStoreId))
+                }}
+              >
+                ↻
+              </button>
+              <h1 id="check-list-title">
+                لیست چک‌های {checkListKind === 'received' ? 'دریافتی' : 'پرداختی'}
+              </h1>
+              <button
+                type="button"
+                aria-label={checkListSearchOpen ? 'بستن جستجوی چک' : 'جستجوی چک'}
+                aria-expanded={checkListSearchOpen}
+                onClick={() => {
+                  setCheckListSearchOpen((open) => !open)
+                  setCheckListSearch('')
+                }}
+              >
+                ⌕
+              </button>
+            </header>
+            {checkListSearchOpen && (
+              <label className="sales-invoice-list-search">
+                <span className="sr-only">جستجو بر اساس شماره، شناسه، بانک یا طرف حساب</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={checkListSearch}
+                  onChange={(event) => setCheckListSearch(event.target.value)}
+                  placeholder="شماره، شناسهٔ چک، بانک یا طرف حساب"
+                />
+              </label>
+            )}
+            <div className="sales-invoice-list-filters check-list-filters" role="tablist" aria-label="وضعیت چک‌ها">
+              {([
+                { id: 'all', label: 'همه' },
+                { id: 'uncleared', label: 'پاس نشده' },
+                { id: 'overdue', label: 'عقب افتاده' },
+                { id: 'cleared', label: 'پاس شده' },
+              ] as const).map((filter) => (
+                <button
+                  className={checkListFilter === filter.id ? 'selected' : ''}
+                  key={filter.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={checkListFilter === filter.id}
+                  onClick={() => setCheckListFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            <div className="sales-invoice-list-table check-list-table" aria-label={`چک‌های ${checkListKind === 'received' ? 'دریافتی' : 'پرداختی'}`}>
+              <div className="sales-invoice-list-table-head">
+                <span>شماره چک</span>
+                <span>سررسید</span>
+                <span>طرف حساب</span>
+                <span>مبلغ</span>
+              </div>
+              {checkListState.error ? (
+                <p className="sales-invoice-list-message error" role="alert">{checkListState.error}</p>
+              ) : filteredCheckListRows.length ? (
+                filteredCheckListRows.map((check) => {
+                  const isOverdue = !check.clearedAt && check.dueDate < checkListToday
+                  const status = check.clearedAt ? 'cleared' : isOverdue ? 'overdue' : 'uncleared'
+                  const statusLabel = status === 'cleared'
+                    ? 'پاس شده'
+                    : status === 'overdue' ? 'عقب افتاده' : 'پاس نشده'
+                  return (
+                    <button
+                      className="sales-invoice-list-row check-list-row"
+                      key={check.id}
+                      type="button"
+                      aria-label={`نمایش چک ${check.number} از ${check.personName}`}
+                      onClick={() => {
+                        setCheckDetail({ kind: checkListKind, checkId: check.id })
+                        setActiveTab('جزئیات چک')
+                      }}
+                    >
+                      <span className="check-list-number">
+                        <strong>{check.number}</strong>
+                        <small>{check.bankName}</small>
+                      </span>
+                      <span className="sales-invoice-list-date">
+                        {formatCalendarDate(
+                          new Date(`${check.dueDate}T12:00:00Z`),
+                          check.calendar,
+                        )}
+                        <small>سررسید</small>
+                      </span>
+                      <span className="sales-invoice-list-buyer">{check.transfer?.personName ?? check.personName}</span>
+                      <span className="sales-invoice-list-amount">
+                        <strong>{formatPersonBalance(check.amount)}</strong>
+                        <small className={`check-status-badge ${status}`}>{statusLabel}</small>
+                      </span>
+                    </button>
+                  )
+                })
+              ) : (
+                <p className="sales-invoice-list-message">
+                  {checkListSearch.trim()
+                    ? 'چکی با این مشخصات پیدا نشد.'
+                    : checkListFilter === 'all'
+                      ? `هنوز چک ${checkListKind === 'received' ? 'دریافتی' : 'پرداختی'} ثبت نشده است.`
+                      : 'چکی با این وضعیت وجود ندارد.'}
+                </p>
+              )}
+            </div>
+            <footer className="sales-invoice-list-footer check-list-footer" aria-label="عملیات فهرست چک‌ها">
+              <button type="button" onClick={() => setActiveTab('خانه')}>
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                <span aria-hidden="true">▥</span>
+                گزارشات
+              </button>
+              <button
+                type="button"
+                onClick={() => openMoneyDocumentForm(checkListKind === 'received' ? 'دریافت چک' : 'پرداخت چک')}
+              >
+                <span aria-hidden="true">⊕</span>
+                سند جدید
+              </button>
+            </footer>
+          </section>
+        ) : activeTab === 'فهرست دریافت‌ها' || activeTab === 'فهرست پرداخت‌ها' ? (
+          <section className="sales-invoice-list-page cash-document-list-page" aria-labelledby="cash-document-list-title">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label={`به‌روزرسانی فهرست ${cashDocumentListKind}‌ها`}
+                onClick={() => setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))}
+              >
+                ↻
+              </button>
+              <h1 id="cash-document-list-title">لیست {cashDocumentListKind}‌ها</h1>
+              <button
+                type="button"
+                aria-label={cashDocumentListSearchOpen ? 'بستن جستجوی اسناد' : 'جستجوی اسناد'}
+                aria-expanded={cashDocumentListSearchOpen}
+                onClick={() => {
+                  setCashDocumentListSearchOpen((open) => !open)
+                  setCashDocumentListSearch('')
+                }}
+              >
+                ⌕
+              </button>
+            </header>
+            {cashDocumentListSearchOpen && (
+              <label className="sales-invoice-list-search">
+                <span className="sr-only">جستجو بر اساس شماره سند، طرف حساب یا مبلغ</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={cashDocumentListSearch}
+                  onChange={(event) => setCashDocumentListSearch(event.target.value)}
+                  placeholder="شماره سند، طرف حساب یا مبلغ"
+                />
+              </label>
+            )}
+            <div className="sales-invoice-list-table money-document-list-table" aria-label={`فهرست ${cashDocumentListKind}‌ها`}>
+              <div className="sales-invoice-list-table-head">
+                <span>سند</span>
+                <span>تاریخ</span>
+                <span>طرف حساب</span>
+                <span>مبلغ</span>
+              </div>
+              {storedMoneyDocuments.error ? (
+                <p className="sales-invoice-list-message error" role="alert">{storedMoneyDocuments.error}</p>
+              ) : cashDocumentListRows.length ? (
+                cashDocumentListRows.map((document) => {
+                  const date = new Date(`${document.date}T12:00:00Z`)
+                  const [hours, minutes] = document.time.split(':').map(Number)
+                  const time = Number.isFinite(hours) && Number.isFinite(minutes)
+                    ? `${formatClockNumber(hours).padStart(2, '۰')}:${formatClockNumber(minutes).padStart(2, '۰')}`
+                    : document.time
+                  return (
+                    <div className="sales-invoice-list-row money-document-list-row" key={document.id}>
+                      <strong>
+                        {document.number}
+                        {document.note && (
+                          <span
+                            className="money-document-note-indicator"
+                            title={document.note}
+                            aria-label="این سند یادداشت دارد"
+                          >
+                            …
+                          </span>
+                        )}
+                      </strong>
+                      <span className="sales-invoice-list-date">
+                        {formatCalendarDate(date, 'persian')}
+                        <small>{time}</small>
+                      </span>
+                      <span className="money-document-list-description">
+                        {document.personName || document.description || '—'}
+                      </span>
+                      <span className="sales-invoice-list-amount">
+                        <strong>{formatPersonBalance(document.amount)}</strong>
+                        <small className="money-document-saved-indicator" aria-label="سند ثبت شده" title="سند ثبت شده">✓</small>
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="sales-invoice-list-message">
+                  {cashDocumentListSearch.trim()
+                    ? `سند ${cashDocumentListKind} با این مشخصات پیدا نشد.`
+                    : `هنوز سند ${cashDocumentListKind} ثبت نشده است.`}
+                </p>
+              )}
+            </div>
+            <footer className="sales-invoice-list-footer" aria-label={`عملیات فهرست ${cashDocumentListKind}‌ها`}>
+              <button type="button" onClick={() => setActiveTab('خانه')}>
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                <span aria-hidden="true">▥</span>
+                گزارشات
+              </button>
+              <button type="button" onClick={() => openMoneyDocumentForm(cashDocumentListKind)}>
+                <span aria-hidden="true">⊕</span>
+                سند جدید
+              </button>
+            </footer>
+          </section>
+        ) : activeTab === 'فهرست هزینه‌ها' ? (
+          <section className="sales-invoice-list-page expense-list-page" aria-labelledby="expense-list-title">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label="به‌روزرسانی فهرست هزینه‌ها"
+                onClick={() => setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))}
+              >
+                ↻
+              </button>
+              <h1 id="expense-list-title">لیست هزینه‌ها</h1>
+              <button
+                type="button"
+                aria-label={expenseListSearchOpen ? 'بستن جستجوی هزینه‌ها' : 'جستجوی هزینه‌ها'}
+                aria-expanded={expenseListSearchOpen}
+                onClick={() => {
+                  setExpenseListSearchOpen((open) => !open)
+                  setExpenseListSearch('')
+                }}
+              >
+                ⌕
+              </button>
+            </header>
+            {expenseListSearchOpen && (
+              <label className="sales-invoice-list-search">
+                <span className="sr-only">جستجو بر اساس شماره سند، شرح یا حساب</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={expenseListSearch}
+                  onChange={(event) => setExpenseListSearch(event.target.value)}
+                  placeholder="شماره سند، شرح هزینه یا حساب"
+                />
+              </label>
+            )}
+            <div className="sales-invoice-list-table money-document-list-table" aria-label="فهرست هزینه‌ها">
+              <div className="sales-invoice-list-table-head">
+                <span>سند</span>
+                <span>تاریخ</span>
+                <span>شرح هزینه</span>
+                <span>مبلغ</span>
+              </div>
+              {storedMoneyDocuments.error ? (
+                <p className="sales-invoice-list-message error" role="alert">{storedMoneyDocuments.error}</p>
+              ) : expenseListRows.length ? (
+                expenseListRows.map((document) => {
+                  const date = new Date(`${document.date}T12:00:00Z`)
+                  const [hours, minutes] = document.time.split(':').map(Number)
+                  const time = Number.isFinite(hours) && Number.isFinite(minutes)
+                    ? `${formatClockNumber(hours).padStart(2, '۰')}:${formatClockNumber(minutes).padStart(2, '۰')}`
+                    : document.time
+                  return (
+                    <div className="sales-invoice-list-row money-document-list-row" key={document.id}>
+                      <strong>
+                        {document.number}
+                        {document.note && (
+                          <span
+                            className="money-document-note-indicator"
+                            title={document.note}
+                            aria-label="این سند یادداشت دارد"
+                          >
+                            …
+                          </span>
+                        )}
+                      </strong>
+                      <span className="sales-invoice-list-date">
+                        {formatCalendarDate(date, 'persian')}
+                        <small>{time}</small>
+                      </span>
+                      <span className="money-document-list-description">{document.description}</span>
+                      <span className="sales-invoice-list-amount">
+                        <strong>{formatPersonBalance(document.amount)}</strong>
+                        <small className="money-document-saved-indicator" aria-label="سند ثبت شده" title="سند ثبت شده">✓</small>
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="sales-invoice-list-message">
+                  {expenseListSearch.trim()
+                    ? 'هزینه‌ای با این مشخصات پیدا نشد.'
+                    : 'هنوز هزینه‌ای ثبت نشده است.'}
+                </p>
+              )}
+            </div>
+            <footer className="sales-invoice-list-footer" aria-label="عملیات فهرست هزینه‌ها">
+              <button type="button" onClick={() => setActiveTab('خانه')}>
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                <span aria-hidden="true">▥</span>
+                گزارشات
+              </button>
+              <button type="button" onClick={() => openMoneyDocumentForm('هزینه')}>
+                <span aria-hidden="true">⊕</span>
+                سند جدید
+              </button>
+            </footer>
+          </section>
+        ) : activeTab === 'فهرست درآمدها' ? (
+          <section className="sales-invoice-list-page income-list-page" aria-labelledby="income-list-title">
+            <header className="sales-invoice-list-header">
+              <button
+                type="button"
+                aria-label="به‌روزرسانی فهرست درآمدها"
+                onClick={() => setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))}
+              >
+                ↻
+              </button>
+              <h1 id="income-list-title">لیست درآمدها</h1>
+              <button
+                type="button"
+                aria-label={incomeListSearchOpen ? 'بستن جستجوی درآمدها' : 'جستجوی درآمدها'}
+                aria-expanded={incomeListSearchOpen}
+                onClick={() => {
+                  setIncomeListSearchOpen((open) => !open)
+                  setIncomeListSearch('')
+                }}
+              >
+                ⌕
+              </button>
+            </header>
+            {incomeListSearchOpen && (
+              <label className="sales-invoice-list-search">
+                <span className="sr-only">جستجو بر اساس شماره سند، شرح یا حساب</span>
+                <input
+                  type="search"
+                  autoFocus
+                  value={incomeListSearch}
+                  onChange={(event) => setIncomeListSearch(event.target.value)}
+                  placeholder="شماره سند، شرح درآمد یا حساب"
+                />
+              </label>
+            )}
+            <div className="sales-invoice-list-table money-document-list-table" aria-label="فهرست درآمدها">
+              <div className="sales-invoice-list-table-head">
+                <span>سند</span>
+                <span>تاریخ</span>
+                <span>شرح درآمد</span>
+                <span>مبلغ</span>
+              </div>
+              {storedMoneyDocuments.error ? (
+                <p className="sales-invoice-list-message error" role="alert">{storedMoneyDocuments.error}</p>
+              ) : incomeListRows.length ? (
+                incomeListRows.map((document) => {
+                  const date = new Date(`${document.date}T12:00:00Z`)
+                  const accountName = storedAccounts.accounts.find(
+                    (account) => account.id === document.accountId,
+                  )?.name
+                  const [hours, minutes] = document.time.split(':').map(Number)
+                  const time = Number.isFinite(hours) && Number.isFinite(minutes)
+                    ? `${formatClockNumber(hours).padStart(2, '۰')}:${formatClockNumber(minutes).padStart(2, '۰')}`
+                    : document.time
+                  return (
+                    <div className="sales-invoice-list-row money-document-list-row" key={document.id}>
+                      <strong>{document.number}</strong>
+                      <span className="sales-invoice-list-date">
+                        {formatCalendarDate(date, 'persian')}
+                        <small>{time}</small>
+                      </span>
+                      <span className="money-document-list-description">{document.description}</span>
+                      <span className="sales-invoice-list-amount">
+                        <strong>{formatPersonBalance(document.amount)}</strong>
+                        {accountName && <small className="money-document-list-account">{accountName}</small>}
+                      </span>
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="sales-invoice-list-message">
+                  {incomeListSearch.trim()
+                    ? 'درآمدی با این مشخصات پیدا نشد.'
+                    : 'هنوز درآمدی ثبت نشده است.'}
+                </p>
+              )}
+            </div>
+            <footer className="sales-invoice-list-footer" aria-label="عملیات فهرست درآمدها">
+              <button type="button" onClick={() => setActiveTab('خانه')}>
+                <span aria-hidden="true">↶</span>
+                بازگشت
+              </button>
+              <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                <span aria-hidden="true">▥</span>
+                گزارشات
+              </button>
+              <button type="button" onClick={() => openMoneyDocumentForm('درآمد')}>
+                <span aria-hidden="true">⊕</span>
+                سند جدید
+              </button>
+            </footer>
+          </section>
+        ) : activeTab === 'جزئیات فاکتور برگشت' && returnInvoiceDetail ? (
+          <div className="sales-invoice-confirmation-page">
+            <header className="sales-invoice-confirmation-header">
+              <h1>{returnInvoiceDetail.kind === 'sales' ? 'فاکتور برگشت از فروش' : 'فاکتور برگشت به خرید'}</h1>
+              <div className="sales-invoice-saved-badge" role="status">
+                <span aria-hidden="true">✓</span>
+                فاکتور برگشت ثبت شده
+              </div>
+            </header>
+            <main className="sales-invoice-confirmation-content">
+              <iframe
+                className="sales-invoice-preview-frame"
+                title={returnInvoiceDetail.kind === 'sales' ? 'فاکتور برگشت از فروش ثبت‌شده' : 'فاکتور برگشت به خرید ثبت‌شده'}
+                srcDoc={getSalesInvoicePrintDocument(
+                  false,
+                  returnInvoiceDetail.invoice,
+                  returnInvoiceDetail.kind === 'sales' ? 'فاکتور برگشت از فروش' : 'فاکتور برگشت به خرید',
+                )}
+              />
+            </main>
+            <footer className="sales-invoice-confirmation-footer" aria-label="عملیات فاکتور برگشت">
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnInvoiceDetail(null)
+                  setActiveTab(returnInvoiceDetail.kind === 'sales' ? 'فهرست برگشت از فروش' : 'فهرست برگشت به خرید')
+                }}
+              >
+                <span aria-hidden="true">↶</span>
+                بازگشت به فهرست
+              </button>
+              <button type="button" onClick={() => printReturnInvoice(returnInvoiceDetail)}>
+                <span aria-hidden="true">▤</span>
+                چاپ فاکتور
+              </button>
+            </footer>
+          </div>
+        ) : activeTab === 'فهرست برگشت از فروش' || activeTab === 'فهرست برگشت به خرید' ? (
+          (() => {
+            const isSalesReturn = activeTab === 'فهرست برگشت از فروش'
+            const returnState = isSalesReturn ? storedReturnSalesInvoices : storedReturnPurchaseInvoices
+            const title = isSalesReturn ? 'برگشت از فروش' : 'برگشت به خرید'
+            const searchPlaceholder = isSalesReturn
+              ? 'شماره فاکتور یا طرف حساب'
+              : 'شماره فاکتور یا تأمین‌کننده'
+            const openNewReturn = isSalesReturn ? openReturnSalesInvoice : openReturnPurchaseInvoice
+            const refreshReturns = () => {
+              if (isSalesReturn) {
+                setStoredReturnSalesInvoices(
+                  readStoredReturnInvoices(RETURN_SALES_INVOICES_STORAGE_KEY, 'sales', activeStoreId),
+                )
+              } else {
+                setStoredReturnPurchaseInvoices(
+                  readStoredReturnInvoices(RETURN_PURCHASE_INVOICES_STORAGE_KEY, 'purchase', activeStoreId),
+                )
+              }
+            }
+            return (
+              <section className="sales-invoice-list-page" aria-labelledby="return-invoice-list-title">
+                <header className="sales-invoice-list-header">
+                  <button type="button" aria-label={`به‌روزرسانی ${title}`} onClick={refreshReturns}>↻</button>
+                  <h1 id="return-invoice-list-title">{title}</h1>
+                  <button
+                    type="button"
+                    aria-label={returnInvoiceListSearchOpen ? 'بستن جستجوی فاکتورهای برگشت' : 'جستجوی فاکتورهای برگشت'}
+                    aria-expanded={returnInvoiceListSearchOpen}
+                    onClick={() => {
+                      setReturnInvoiceListSearchOpen((open) => !open)
+                      setReturnInvoiceListSearch('')
+                    }}
+                  >
+                    ⌕
+                  </button>
+                </header>
+                {returnInvoiceListSearchOpen && (
+                  <label className="sales-invoice-list-search">
+                    <span className="sr-only">جستجو بر اساس شماره فاکتور یا طرف حساب</span>
+                    <input
+                      type="search"
+                      autoFocus
+                      value={returnInvoiceListSearch}
+                      onChange={(event) => setReturnInvoiceListSearch(event.target.value)}
+                      placeholder={searchPlaceholder}
+                    />
+                  </label>
+                )}
+                <div className="sales-invoice-list-table" aria-label={`فهرست فاکتورهای ${title}`}>
+                  <div className="sales-invoice-list-table-head">
+                    <span>فاکتور</span>
+                    <span>تاریخ</span>
+                    <span>{isSalesReturn ? 'طرف حساب' : 'تأمین‌کننده'}</span>
+                    <span>مبلغ</span>
+                  </div>
+                  {returnState.error ? (
+                    <p className="sales-invoice-list-message error" role="alert">{returnState.error}</p>
+                  ) : filteredReturnInvoiceListRows.length ? (
+                    filteredReturnInvoiceListRows.map((invoice) => {
+                      const quantity = invoice.lines.reduce((total, line) => total + line.quantity, 0)
+                      const invoiceDate = new Date(`${invoice.date}T12:00:00Z`)
+                      const time = `${formatClockNumber(invoice.time.hours).padStart(2, '۰')}:${formatClockNumber(invoice.time.minutes).padStart(2, '۰')}`
+                      return (
+                        <button
+                          className="sales-invoice-list-row"
+                          key={invoice.id}
+                          type="button"
+                          aria-label={`نمایش فاکتور ${title} شماره ${invoice.number}`}
+                          onClick={() => {
+                            setReturnInvoiceDetail({ kind: isSalesReturn ? 'sales' : 'purchase', invoice })
+                            setActiveTab('جزئیات فاکتور برگشت')
+                          }}
+                        >
+                          <strong>{invoice.number}</strong>
+                          <span className="sales-invoice-list-date">
+                            {formatCalendarDate(invoiceDate, invoice.calendar)}
+                            <small>{time}</small>
+                          </span>
+                          <span className="sales-invoice-list-buyer">{invoice.buyerName}</span>
+                          <span className="sales-invoice-list-amount">
+                            <strong>{formatPersonBalance(invoice.total)}</strong>
+                            <small>{formatPersonBalance(quantity)} قلم</small>
+                          </span>
+                        </button>
+                      )
+                    })
+                  ) : (
+                    <p className="sales-invoice-list-message">
+                      {returnInvoiceListSearch.trim()
+                        ? `فاکتور ${title} با این مشخصات پیدا نشد.`
+                        : `هنوز فاکتور ${title} ثبت نشده است.`}
+                    </p>
+                  )}
+                </div>
+                <footer className="sales-invoice-list-footer" aria-label={`عملیات ${title}`}>
+                  <button type="button" onClick={() => setActiveTab('خانه')}>
+                    <span aria-hidden="true">↶</span>
+                    بازگشت
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('گزارش‌ها')}>
+                    <span aria-hidden="true">▥</span>
+                    گزارشات
+                  </button>
+                  <button type="button" onClick={openNewReturn}>
+                    <span aria-hidden="true">＋</span>
+                    ثبت برگشت جدید
+                  </button>
+                </footer>
+              </section>
+            )
+          })()
         ) : activeTab === 'فاکتورهای خرید' ? (
           <section className="sales-invoice-list-page" aria-labelledby="purchase-invoice-list-title">
             <header className="sales-invoice-list-header">
@@ -10577,12 +11724,12 @@ function App() {
                     ? 'چاپ فاکتور برگشت از فروش'
                     : purchaseInvoiceMode ? 'چاپ فاکتور خرید' : 'چاپ فاکتور فروش'}
                 onClick={() => returnPurchaseInvoiceMode
-                  ? showSalesInvoiceShareNotice('چاپ فاکتور برگشت به خرید در مرحلهٔ بعدی تکمیل می‌شود.')
+                  ? printSalesInvoice('فاکتور برگشت به خرید')
                   : returnSalesInvoiceMode
-                    ? showSalesInvoiceShareNotice('چاپ فاکتور برگشت از فروش در مرحلهٔ بعدی تکمیل می‌شود.')
+                    ? printSalesInvoice('فاکتور برگشت از فروش')
                     : purchaseInvoiceMode
-                  ? showSalesInvoiceShareNotice('چاپ فاکتور خرید در مرحلهٔ بعدی فعال می‌شود.')
-                  : printSalesInvoice()}
+                      ? showSalesInvoiceShareNotice('چاپ فاکتور خرید در مرحلهٔ بعدی فعال می‌شود.')
+                      : printSalesInvoice()}
               >
                 ▤
               </button>
@@ -10999,7 +12146,7 @@ function App() {
               <button
                 className="finish"
                 type="button"
-                disabled={!returnInvoiceMode && salesInvoiceSaving}
+                disabled={salesInvoiceSaving}
                 onClick={() => {
                   if (returnInvoiceMode) {
                     if (!selectedSalesInvoicePerson) {
@@ -11009,9 +12156,7 @@ function App() {
                       return
                     }
                     setSalesInvoicePartyError('')
-                    showSalesInvoiceShareNotice(
-                      `ثبت نهایی فاکتور ${returnSalesInvoiceMode ? 'برگشت از فروش' : 'برگشت به خرید'} را پس از تکمیل مراحل بعد انجام می‌دهیم.`,
-                    )
+                    void saveReturnInvoice()
                   } else if (purchaseInvoiceMode) {
                     savePurchaseInvoice()
                   } else {
@@ -11021,7 +12166,9 @@ function App() {
               >
                 <span aria-hidden="true">✓</span>
                 {returnInvoiceMode
-                  ? 'بستن فاکتور'
+                  ? salesInvoiceSaving
+                    ? 'در حال ثبت…'
+                    : 'ثبت فاکتور برگشت'
                   : salesInvoiceSaving
                     ? 'در حال ذخیره…'
                     : purchaseInvoiceMode
@@ -16177,10 +17324,6 @@ function App() {
                 className={[
                   'entry-card',
                   item.label === 'فاکتور خرید' && 'purchase-invoice-card',
-                  (item.label === 'دریافت' || item.label === 'دریافت چک') && 'entry-card-receive',
-                  item.label === 'پرداخت' && 'entry-card-payment',
-                  item.label === 'هزینه' && 'entry-card-expense',
-                  item.label === 'درآمد' && 'entry-card-income',
                 ].filter(Boolean).join(' ')}
                 key={item.label}
                 type="button"
@@ -16196,7 +17339,9 @@ function App() {
                         ? openMoneyDocumentForm('دریافت چک')
                           : item.label === 'پرداخت چک'
                             ? openMoneyDocumentForm('پرداخت چک')
-                          : isMoneyDocumentKind(item.label)
+                              : item.label === 'خرج چک'
+                                ? openMoneyDocumentForm('خرج چک')
+                              : isMoneyDocumentKind(item.label)
                       ? openMoneyDocumentForm(item.label)
                     : showComingSoon(item.label)}
               >
@@ -16222,7 +17367,7 @@ function App() {
           <div className="link-grid">
             {documents.map((item) => (
               <button
-                className={`list-link${item.label === 'فاکتورهای فروش' || item.label === 'فاکتورهای خرید' ? ' list-link-invoices' : ''}`}
+                className="list-link"
                 key={item.label}
                 type="button"
                 onClick={() => {
@@ -16236,6 +17381,47 @@ function App() {
                     setPurchaseInvoiceListSearchOpen(false)
                     setStoredPurchaseInvoices(readStoredPurchaseInvoices(activeStoreId))
                     setActiveTab('فاکتورهای خرید')
+                  } else if (item.label === 'برگشت از فروش') {
+                    setReturnInvoiceListSearch('')
+                    setReturnInvoiceListSearchOpen(false)
+                    setStoredReturnSalesInvoices(
+                      readStoredReturnInvoices(RETURN_SALES_INVOICES_STORAGE_KEY, 'sales', activeStoreId),
+                    )
+                    setActiveTab('فهرست برگشت از فروش')
+                  } else if (item.label === 'برگشت به خرید') {
+                    setReturnInvoiceListSearch('')
+                    setReturnInvoiceListSearchOpen(false)
+                    setStoredReturnPurchaseInvoices(
+                      readStoredReturnInvoices(RETURN_PURCHASE_INVOICES_STORAGE_KEY, 'purchase', activeStoreId),
+                    )
+                    setActiveTab('فهرست برگشت به خرید')
+                  } else if (item.label === 'چک‌های دریافتی') {
+                    setCheckListFilter('all')
+                    setCheckListSearch('')
+                    setCheckListSearchOpen(false)
+                    setStoredReceivedChecks(readStoredReceivedChecks(activeStoreId))
+                    setActiveTab('فهرست چک‌های دریافتی')
+                  } else if (item.label === 'چک‌های پرداختی') {
+                    setCheckListFilter('all')
+                    setCheckListSearch('')
+                    setCheckListSearchOpen(false)
+                    setStoredPaidChecks(readStoredPaidChecks(activeStoreId))
+                    setActiveTab('فهرست چک‌های پرداختی')
+                  } else if (item.label === 'دریافت‌ها' || item.label === 'پرداخت‌ها') {
+                    setCashDocumentListSearch('')
+                    setCashDocumentListSearchOpen(false)
+                    setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))
+                    setActiveTab(item.label === 'دریافت‌ها' ? 'فهرست دریافت‌ها' : 'فهرست پرداخت‌ها')
+                  } else if (item.label === 'درآمدها') {
+                    setIncomeListSearch('')
+                    setIncomeListSearchOpen(false)
+                    setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))
+                    setActiveTab('فهرست درآمدها')
+                  } else if (item.label === 'هزینه‌ها') {
+                    setExpenseListSearch('')
+                    setExpenseListSearchOpen(false)
+                    setStoredMoneyDocuments(readStoredMoneyDocuments(activeStoreId))
+                    setActiveTab('فهرست هزینه‌ها')
                   } else {
                     showComingSoon(item.label)
                   }
@@ -16271,11 +17457,14 @@ function App() {
           >
             <header className="sales-invoice-receipt-header">
               <h2 id="money-document-title">
-                ثبت {moneyDocumentKind}
-                {moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت' ? ' وجه' : ''}
+                {moneyDocumentKind === 'خرج چک'
+                  ? 'واگذاری چک دریافتی'
+                  : `ثبت ${moneyDocumentKind}${moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت' ? ' وجه' : ''}`}
               </h2>
               <p>سند شمارهٔ {formatPersonCode(
-                moneyDocumentKind === 'دریافت چک'
+                moneyDocumentKind === 'خرج چک'
+                  ? storedReceivedChecks.checks.filter((check) => check.transfer).length + 1
+                  : moneyDocumentKind === 'دریافت چک'
                   ? storedReceivedChecks.checks.length + 1
                   : moneyDocumentKind === 'پرداخت چک'
                     ? storedPaidChecks.checks.length + 1
@@ -16283,7 +17472,7 @@ function App() {
               )}</p>
             </header>
             <form onSubmit={saveMoneyDocument}>
-              <div className="sales-invoice-receipt-tools money-document-tools">
+              <div className={`sales-invoice-receipt-tools money-document-tools${moneyDocumentKind === 'خرج چک' ? ' money-document-check-transfer-tools' : ''}`}>
                 <div className="sales-invoice-receipt-tool-group">
                   <button
                     className="sales-invoice-receipt-date"
@@ -16366,17 +17555,21 @@ function App() {
               </div>
               <div className="sales-invoice-receipt-fields">
                 {(moneyDocumentKind === 'دریافت' || moneyDocumentKind === 'پرداخت'
-                  || moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
+                  || moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                  || moneyDocumentKind === 'خرج چک') && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon" aria-hidden="true">♙</span>
                     <span className="sales-invoice-receipt-field-label">
                       {moneyDocumentKind === 'دریافت چک'
                         ? 'طرف حساب:'
-                        : moneyDocumentKind === 'پرداخت چک' ? 'پرداخت به:' : 'شخص:'}
+                        : moneyDocumentKind === 'پرداخت چک' ? 'پرداخت به:'
+                          : moneyDocumentKind === 'خرج چک' ? 'واگذاری به:' : 'شخص:'}
                     </span>
                     <span className="sales-invoice-receipt-account-wrap">
                       <select
-                        aria-label={moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
+                        aria-label={moneyDocumentKind === 'خرج چک'
+                          ? 'شخص مقصد واگذاری چک'
+                          : moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک'
                           ? 'طرف حساب چک' : 'شخص سند'}
                         value={moneyDocumentFields.personId}
                         onChange={(event) => setMoneyDocumentFields((fields) => ({
@@ -16410,6 +17603,100 @@ function App() {
                     </span>
                   </label>
                 )}
+                {moneyDocumentKind === 'خرج چک' && (
+                  <section className="money-document-check-picker" aria-label="انتخاب چک برای واگذاری">
+                    <div className="money-document-check-picker-heading">
+                      <div>
+                        <strong>چک دریافتی</strong>
+                        <small>چکی را که می‌خواهی واگذار کنی انتخاب کن</small>
+                      </div>
+                      <span aria-hidden="true">▤</span>
+                    </div>
+                    {storedReceivedChecks.error ? (
+                      <p className="sales-invoice-receipt-error" role="alert">
+                        {storedReceivedChecks.error}
+                      </p>
+                    ) : (
+                      <>
+                        {(() => {
+                          const selectedCheck = storedReceivedChecks.checks.find((check) => (
+                            check.id === moneyDocumentSelectedCheckId && !check.transfer
+                          ))
+                          return selectedCheck ? (
+                            <div className="money-document-selected-check">
+                              <div>
+                                <span>شماره چک</span>
+                                <strong>{selectedCheck.number}</strong>
+                              </div>
+                              <div>
+                                <span>نام بانک</span>
+                                <strong>{selectedCheck.bankName}</strong>
+                              </div>
+                              <div>
+                                <span>مبلغ چک</span>
+                                <strong>{formatPersonBalance(selectedCheck.amount)} <small>ریال</small></strong>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="حذف چک انتخاب‌شده"
+                                onClick={() => setMoneyDocumentSelectedCheckId('')}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="money-document-no-check-selected">
+                              هنوز چکی برای واگذاری انتخاب نشده است.
+                            </p>
+                          )
+                        })()}
+                        <button
+                          className="money-document-check-picker-trigger"
+                          type="button"
+                          aria-expanded={moneyDocumentCheckPickerOpen}
+                          onClick={() => setMoneyDocumentCheckPickerOpen((open) => !open)}
+                        >
+                          <span aria-hidden="true">{moneyDocumentCheckPickerOpen ? '−' : '+'}</span>
+                          {moneyDocumentCheckPickerOpen ? 'بستن فهرست چک‌ها' : 'انتخاب چک دریافتی'}
+                        </button>
+                        {moneyDocumentCheckPickerOpen && (
+                          <div className="money-document-check-options" role="listbox" aria-label="چک‌های آماده واگذاری">
+                            {storedReceivedChecks.checks.filter((check) => !check.transfer).length > 0 ? (
+                              storedReceivedChecks.checks
+                                .filter((check) => !check.transfer)
+                                .map((check) => (
+                                  <button
+                                    key={check.id}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={moneyDocumentSelectedCheckId === check.id}
+                                    onClick={() => {
+                                      setMoneyDocumentSelectedCheckId(check.id)
+                                      setMoneyDocumentCheckPickerOpen(false)
+                                    }}
+                                  >
+                                    <span className="money-document-check-option-icon" aria-hidden="true">▤</span>
+                                    <span className="money-document-check-option-copy">
+                                      <strong>{check.bankName} · چک {check.number}</strong>
+                                      <small>{check.personName} · سررسید {formatCalendarDate(
+                                        new Date(`${check.dueDate}T12:00:00Z`),
+                                        check.calendar,
+                                      )}</small>
+                                    </span>
+                                    <strong className="money-document-check-option-amount">
+                                      {formatPersonBalance(check.amount)} <small>ریال</small>
+                                    </strong>
+                                  </button>
+                                ))
+                            ) : (
+                              <p>چک دریافتیِ آمادهٔ واگذاری وجود ندارد.</p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </section>
+                )}
                 {(moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
                   <>
                     <label className="sales-invoice-receipt-field">
@@ -16427,59 +17714,6 @@ function App() {
                             sayadiId: normalizeAccountDigits(event.target.value).slice(0, 16),
                           }))}
                           maxLength={16}
-                          required
-                        />
-                      </span>
-                    </label>
-                    <label className="sales-invoice-receipt-field">
-                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">▤</span>
-                      <span className="sales-invoice-receipt-field-label">شماره برگ:</span>
-                      <span className="sales-invoice-receipt-input-wrap">
-                        <input
-                          type="text"
-                          aria-label="شماره برگ چک"
-                          value={moneyDocumentFields.leafNumber}
-                          onChange={(event) => setMoneyDocumentFields((fields) => ({
-                            ...fields,
-                            leafNumber: event.target.value,
-                          }))}
-                          maxLength={30}
-                          required
-                        />
-                      </span>
-                    </label>
-                    <label className="sales-invoice-receipt-field">
-                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">۶</span>
-                      <span className="sales-invoice-receipt-field-label">سریال:</span>
-                      <span className="sales-invoice-receipt-input-wrap">
-                        <input
-                          type="text"
-                          aria-label="سریال چک"
-                          value={moneyDocumentFields.serial}
-                          onChange={(event) => setMoneyDocumentFields((fields) => ({
-                            ...fields,
-                            serial: event.target.value,
-                          }))}
-                          maxLength={30}
-                          required
-                        />
-                      </span>
-                    </label>
-                    <label className="sales-invoice-receipt-field">
-                      <span className="sales-invoice-receipt-field-icon" aria-hidden="true">♙</span>
-                      <span className="sales-invoice-receipt-field-label">کد ملی:</span>
-                      <span className="sales-invoice-receipt-input-wrap">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          aria-label="کد ملی صادرکننده چک"
-                          value={moneyDocumentFields.nationalId}
-                          onChange={(event) => setMoneyDocumentFields((fields) => ({
-                            ...fields,
-                            nationalId: normalizeAccountDigits(event.target.value).slice(0, 10),
-                          }))}
-                          maxLength={10}
                           required
                         />
                       </span>
@@ -16522,25 +17756,27 @@ function App() {
                     </span>
                   </label>
                 )}
-                <label className="sales-invoice-receipt-field">
-                  <span className="sales-invoice-receipt-field-icon money" aria-hidden="true">＄</span>
-                  <span className="sales-invoice-receipt-field-label">مبلغ:</span>
-                  <span className="sales-invoice-receipt-input-wrap">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      aria-label={`مبلغ ${moneyDocumentKind} به ریال`}
-                      value={formatAccountBalanceInput(moneyDocumentFields.amount)}
-                      onChange={(event) => setMoneyDocumentFields((fields) => ({
-                        ...fields,
-                        amount: formatAccountBalanceInput(event.target.value),
-                      }))}
-                      required
-                    />
-                    <small>ریال</small>
-                  </span>
-                </label>
+                {moneyDocumentKind !== 'خرج چک' && (
+                  <label className="sales-invoice-receipt-field">
+                    <span className="sales-invoice-receipt-field-icon money" aria-hidden="true">＄</span>
+                    <span className="sales-invoice-receipt-field-label">مبلغ:</span>
+                    <span className="sales-invoice-receipt-input-wrap">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        aria-label={`مبلغ ${moneyDocumentKind} به ریال`}
+                        value={formatAccountBalanceInput(moneyDocumentFields.amount)}
+                        onChange={(event) => setMoneyDocumentFields((fields) => ({
+                          ...fields,
+                          amount: formatAccountBalanceInput(event.target.value),
+                        }))}
+                        required
+                      />
+                      <small>ریال</small>
+                    </span>
+                  </label>
+                )}
                 {(moneyDocumentKind === 'دریافت چک' || moneyDocumentKind === 'پرداخت چک') && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
@@ -16560,7 +17796,8 @@ function App() {
                     </span>
                   </label>
                 )}
-                {moneyDocumentKind !== 'دریافت چک' && moneyDocumentKind !== 'پرداخت چک' && (
+                {moneyDocumentKind !== 'دریافت چک' && moneyDocumentKind !== 'پرداخت چک'
+                  && moneyDocumentKind !== 'خرج چک' && (
                   <label className="sales-invoice-receipt-field">
                     <span className="sales-invoice-receipt-field-icon bank" aria-hidden="true">▤</span>
                     <span className="sales-invoice-receipt-field-label">
