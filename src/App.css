@@ -2537,6 +2537,18 @@
   filter: drop-shadow(0 1px 1px #06483d50);
 }
 
+.people-add-icon-plus {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: people-add-icon-spin 6s linear infinite;
+}
+
+@keyframes people-add-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .people-add-button-label {
   position: absolute;
   left: 50%;

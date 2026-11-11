@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
@@ -2380,6 +2380,8 @@ function App() {
   const [storeState, setStoreState] = useState(readStoredStoreState)
   const { stores, activeStoreId } = storeState
   const [activeTab, setActiveTab] = useState('خانه')
+  const homeContentRef = useRef<HTMLElement | null>(null)
+  const homeScrollPositionRef = useRef<number | null>(null)
   const [activeSettingsSection, setActiveSettingsSection] = useState('')
   const [invoiceDesignOpen, setInvoiceDesignOpen] = useState(false)
   const [salesInvoiceLines, setSalesInvoiceLines] = useState<SalesInvoiceLine[]>([])
@@ -8464,6 +8466,15 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  useLayoutEffect(() => {
+    if (activeTab !== 'خانه' || homeScrollPositionRef.current === null) return
+    const homeContent = homeContentRef.current
+    if (!homeContent) return
+
+    homeContent.scrollTop = homeScrollPositionRef.current
+    homeScrollPositionRef.current = null
+  }, [activeTab])
+
   const visibleAccounts = storedAccounts.accounts.filter((account) => account.kind === accountListFilter)
 
   return (
@@ -8541,7 +8552,7 @@ function App() {
         </div>
       </header>
 
-      <main className={demoEntered ? 'home-content' : 'auth-content'}>
+      <main ref={homeContentRef} className={demoEntered ? 'home-content' : 'auth-content'}>
         {!demoEntered ? (
           <section className="auth-layout">
             <div className="auth-visual">
@@ -16791,7 +16802,11 @@ function App() {
                 onClick={() => openPersonForm()}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
+                  <circle cx="8" cy="7" r="3.5" />
+                  <path d="M1.8 20v-1.2a4.3 4.3 0 0 1 4.3-4.3h3.8a4.3 4.3 0 0 1 4.3 4.3V20" />
+                  <g className="people-add-icon-plus">
+                    <path d="M19 4.5v7M15.5 8h7" />
+                  </g>
                 </svg>
                 <span className="people-add-button-label">شخص جدید</span>
               </button>
@@ -17371,6 +17386,9 @@ function App() {
                 key={item.label}
                 type="button"
                 onClick={() => {
+                  if (activeTab === 'خانه') {
+                    homeScrollPositionRef.current = homeContentRef.current?.scrollTop ?? null
+                  }
                   if (item.label === 'فاکتورهای فروش') {
                     setSalesInvoiceListFilter('all')
                     setSalesInvoiceListSearch('')
