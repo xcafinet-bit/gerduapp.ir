@@ -13910,37 +13910,42 @@ function App() {
                 </svg>
               </span>
             </button>
-            {accountFormOpen && (
+            {accountFormOpen && createPortal(
               <div
-                className="account-form-backdrop"
-                onMouseDown={(event) => {
-                  if (event.target === event.currentTarget) setAccountFormOpen(false)
-                }}
+                className="account-form-portal app-frame"
+                data-theme={theme}
+                data-color-theme={colorTheme}
               >
-                <section
-                  className="account-form-dialog"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="account-form-title"
+                <div
+                  className="account-form-backdrop"
+                  onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) setAccountFormOpen(false)
+                  }}
                 >
-                  <header className="account-form-heading">
-                    <div>
-                      <span>مدیریت مالی <i aria-hidden="true">•</i> حساب‌ها</span>
-                      <h2 id="account-form-title">{editingAccountId ? 'ویرایش حساب' : 'افزودن حساب جدید'}</h2>
-                      <p>مشخصات حساب صندوق یا بانکی را وارد کنید.</p>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label="بستن پنجره"
-                      onClick={() => {
-                        setAccountFormOpen(false)
-                        setEditingAccountId(null)
-                      }}
-                    >
-                      ×
-                    </button>
-                  </header>
-                  <form className="account-form" onSubmit={saveAccount}>
+                  <section
+                    className="account-form-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="account-form-title"
+                  >
+                    <header className="account-form-heading">
+                      <div>
+                        <span>مدیریت مالی <i aria-hidden="true">•</i> حساب‌ها</span>
+                        <h2 id="account-form-title">{editingAccountId ? 'ویرایش حساب' : 'افزودن حساب جدید'}</h2>
+                        <p>مشخصات حساب صندوق یا بانکی را وارد کنید.</p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="بستن پنجره"
+                        onClick={() => {
+                          setAccountFormOpen(false)
+                          setEditingAccountId(null)
+                        }}
+                      >
+                        ×
+                      </button>
+                    </header>
+                    <form className="account-form" onSubmit={saveAccount}>
                     <fieldset className="account-kind-options">
                       <legend>نوع حساب</legend>
                       {(['بانکی', 'صندوق'] as const).map((kind) => (
@@ -14183,9 +14188,11 @@ function App() {
                       }}>انصراف</button>
                       <button type="submit">{editingAccountId ? 'ذخیرهٔ تغییرات' : 'تأیید و افزودن حساب'}</button>
                     </footer>
-                  </form>
-                </section>
-              </div>
+                    </form>
+                  </section>
+                </div>
+              </div>,
+              document.body,
             )}
             {accountTransferOpen && (
               <div

@@ -21299,13 +21299,31 @@ button:focus-visible {
 
 .account-form-backdrop {
   position: fixed;
-  z-index: 80;
+  z-index: 1000;
   inset: 0;
   display: grid;
   place-items: center;
   padding: 18px;
   background: #10232bb8;
   backdrop-filter: blur(5px);
+}
+
+.account-form-portal.app-frame {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  display: block;
+  overflow: visible;
+  padding: 0;
+  background: transparent !important;
+  pointer-events: none;
+}
+
+.account-form-portal .account-form-backdrop {
+  pointer-events: auto;
 }
 
 .account-form-dialog {
