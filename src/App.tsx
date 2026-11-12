@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
@@ -224,6 +224,442 @@ function Icon({
   )
 }
 
+function NavigationGlyph({ name, className }: { name: string; className?: string }) {
+  const glyphs: Record<string, ReactNode> = {
+    home: <path d="m3 10 9-7 9 7M5.5 9v11h5v-7h3v7h5V9" />,
+    people: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 21a6.5 6.5 0 0 1 13 0m1-16a3.5 3.5 0 0 1 0 6.9M18 14a6.5 6.5 0 0 1 3.5 6" /></>,
+    inventory: <><path d="m12 3 9 5v8l-9 5-9-5V8z" /><path d="m3 8 9 5 9-5m-9 5v8" /></>,
+    chart: <><path d="M3 21V4m0 17h19" /><path d="M7 17v-5m5 5V8m5 9V5m4 12V3" /></>,
+    accounts: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18m-14 4h4m-4 2h7" /></>,
+  }
+
+  return (
+    <svg
+      className={`nav-icon ${className ?? ''}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {glyphs[name]}
+    </svg>
+  )
+}
+
+function ToolbarAddGlyph({ kind }: { kind: 'people' | 'product' | 'service' | 'production' | 'accounts' }) {
+  if (kind === 'people') {
+    return (
+      <svg className="nav-bead-add-glyph nav-bead-add-glyph-people" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="8" cy="7" r="3.5" />
+        <path d="M1.8 20v-1.2a4.3 4.3 0 0 1 4.3-4.3h3.8a4.3 4.3 0 0 1 4.3 4.3V20" />
+        <g className="people-add-icon-plus"><path d="M19 4.5v7M15.5 8h7" /></g>
+      </svg>
+    )
+  }
+
+  if (kind === 'product') {
+    return (
+      <svg className="nav-bead-add-glyph inventory-add-icon inventory-add-icon--product" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <path className="inventory-box-body" d="m7 14 13 8 13-8v15l-13 7-13-7V14Z" />
+        <path className="inventory-box-seam" d="M20 22v14M7 14l13 8 13-8" />
+        <path className="inventory-box-lid-closed" d="m7 14 13-8 13 8-13 8-13-8Z" />
+        <g className="inventory-box-lid-open">
+          <path d="m7 14 1-9 12-3v12l-13 8v-8Z" />
+          <path d="m20 14 12-9 1 9-13 8v-8Z" />
+        </g>
+      </svg>
+    )
+  }
+
+  if (kind === 'service') {
+    return (
+      <svg className="nav-bead-add-glyph inventory-add-icon inventory-add-icon--service" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <path d="M23.5 8.5a9.2 9.2 0 0 0-11.8 11.8L5.5 26.5a4.2 4.2 0 0 0 5.9 5.9l6.2-6.2a9.2 9.2 0 0 0 11.8-11.8l-5.8 5.8-5.9-5.9 5.8-5.8Z" />
+        <path d="m16.2 23.8 4 4M31 5v5m-2.5-2.5h5" />
+      </svg>
+    )
+  }
+
+  if (kind === 'production') {
+    return (
+      <svg className="nav-bead-add-glyph inventory-add-icon inventory-add-icon--production" viewBox="0 0 40 40" aria-hidden="true">
+        <text className="inventory-formula-main" x="19" y="26" textAnchor="middle">Σ</text>
+        <text className="inventory-formula-symbol inventory-formula-symbol--plus" x="7" y="12">+</text>
+        <text className="inventory-formula-symbol inventory-formula-symbol--multiply" x="28" y="13">×</text>
+        <text className="inventory-formula-symbol inventory-formula-symbol--equals" x="29" y="34">=</text>
+      </svg>
+    )
+  }
+
+  return (
+    <span className="nav-bead-add-glyph nav-bead-add-glyph-accounts" aria-hidden="true">
+      <span className="accounts-add-icon accounts-add-icon-bank">
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="5" width="18" height="14" rx="2.5" />
+          <path d="M3 9h18M7 15h4" />
+        </svg>
+      </span>
+      <span className="accounts-add-icon accounts-add-icon-cash">
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x="2.5" y="7" width="15" height="11" rx="1.8" />
+          <path d="M5 9.5h.01M15 15.5h.01" />
+          <circle cx="10" cy="12.5" r="2.4" />
+          <circle cx="18" cy="7" r="3.5" />
+          <path d="M18 5.2v3.6m1.1-2.7h-1.6a.9.9 0 1 0 0 1.8h1a.9.9 0 1 1 0 1.8h-1.6" />
+        </svg>
+      </span>
+    </span>
+  )
+}
+
+function MeniscusToolbar({
+  items,
+  activeLabel,
+  onSelect,
+  addKind,
+  addLabel,
+  onAdd,
+}: {
+  items: { icon: string; label: string }[]
+  activeLabel: string
+  onSelect: (label: string) => void
+  addKind: 'people' | 'product' | 'service' | 'production' | 'accounts' | null
+  addLabel: string
+  onAdd: (() => void) | null
+}) {
+  const toolbarRef = useRef<HTMLElement>(null)
+  const beadRef = useRef<HTMLElement>(null)
+  const pathRef = useRef<SVGPathElement>(null)
+  const centersRef = useRef<number[]>([])
+  const hintWidthRef = useRef(140)
+  const positionRef = useRef(0)
+  const frameRef = useRef(0)
+  const animationIdRef = useRef(0)
+  const initializedRef = useRef(false)
+  const selectedLabelRef = useRef(activeLabel)
+  const [isTouchPointer, setIsTouchPointer] = useState(() => window.matchMedia('(pointer: coarse)').matches)
+  const [beadSettled, setBeadSettled] = useState(true)
+  const draggedRef = useRef(false)
+  const gestureRef = useRef<{
+    pointerId: number | null
+    pointerStartX: number
+    startX: number
+  }>({ pointerId: null, pointerStartX: 0, startX: 0 })
+  const initialIndex = Math.max(0, items.findIndex((item) => item.label === activeLabel))
+  const [visualIndex, setVisualIndex] = useState(initialIndex)
+
+  useEffect(() => {
+    const pointerQuery = window.matchMedia('(pointer: coarse)')
+    const updatePointerType = () => setIsTouchPointer(pointerQuery.matches)
+    pointerQuery.addEventListener('change', updatePointerType)
+    return () => pointerQuery.removeEventListener('change', updatePointerType)
+  }, [])
+
+  const render = useCallback((position: number) => {
+    const toolbar = toolbarRef.current
+    const bead = beadRef.current
+    const path = pathRef.current
+    if (!toolbar || !bead || !path) return
+
+    const width = toolbar.clientWidth
+    const height = toolbar.clientHeight
+    const center = Math.max(49, Math.min(width - 49, position))
+    path.setAttribute(
+      'd',
+      `M22 39 H${center - 49} C${center - 34} 39 ${center - 38} 76 ${center} 76 C${center + 38} 76 ${center + 34} 39 ${center + 49} 39 H${width - 22} Q${width} 39 ${width} 61 V${height} H0 V61 Q0 39 22 39 Z`,
+    )
+    const surface = toolbar.querySelector<SVGSVGElement>('.nav-bar-surface')
+    surface?.setAttribute('viewBox', `0 0 ${width} ${height}`)
+    bead.style.transform = `translate3d(${position - 29}px,0,0)`
+    toolbar.style.setProperty('--bead-x', `${position}px`)
+    const hint = toolbar.querySelector<HTMLElement>('.nav-add-hint')
+    if (hint) {
+      const hintWidth = hintWidthRef.current
+      const maxHintLeft = Math.max(8, width - hintWidth - 8)
+      const rightSide = position + 39
+      const preferredLeft = rightSide + hintWidth <= width - 8
+        ? rightSide
+        : position - 29 - hintWidth - 8
+      hint.style.left = `${Math.max(8, Math.min(maxHintLeft, preferredLeft))}px`
+    }
+
+    centersRef.current.forEach((tabCenter, index) => {
+      const tab = toolbar.querySelectorAll<HTMLButtonElement>('.nav-item')[index]
+      const icon = tab?.querySelector<SVGElement>('.nav-icon')
+      if (!icon) return
+      const proximity = Math.max(0, 1 - Math.abs(tabCenter - position) / 58)
+      const lift = proximity * proximity * (3 - 2 * proximity)
+      icon.style.transform = `translate3d(0,${-46 * lift}px,0) scale(${1 + lift * 0.04})`
+      icon.style.color = lift > 0.65 ? '#693731' : ''
+    })
+  }, [])
+
+  const moveTo = useCallback((position: number) => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current)
+    frameRef.current = 0
+    setBeadSettled(false)
+    animationIdRef.current += 1
+    const animationId = animationIdRef.current
+    const centers = centersRef.current
+    const minimum = Math.min(...centers)
+    const maximum = Math.max(...centers)
+    const bead = beadRef.current
+    const currentTransform = bead ? new DOMMatrixReadOnly(window.getComputedStyle(bead).transform) : null
+    const visiblePosition = currentTransform
+      ? currentTransform.m41 + (bead?.offsetWidth ?? 58) / 2
+      : positionRef.current
+    const start = Math.max(minimum, Math.min(maximum, visiblePosition))
+    const end = Math.max(minimum, Math.min(maximum, position))
+    positionRef.current = start
+    const startedAt = performance.now()
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 360
+    const tick = (time: number) => {
+      if (animationId !== animationIdRef.current) return
+      const progress = duration === 0 ? 1 : Math.min(1, (time - startedAt) / duration)
+      const eased = 1 - (1 - progress) ** 3
+      positionRef.current = start + (end - start) * eased
+      render(positionRef.current)
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(tick)
+      } else {
+        positionRef.current = end
+        frameRef.current = 0
+        render(positionRef.current)
+        setBeadSettled(true)
+      }
+    }
+    frameRef.current = requestAnimationFrame(tick)
+  }, [render])
+
+  const selectIndex = useCallback((index: number) => {
+    const item = items[index]
+    const center = centersRef.current[index]
+    if (!item || center === undefined) return
+    selectedLabelRef.current = item.label
+    setVisualIndex(index)
+    moveTo(center)
+    onSelect(item.label)
+  }, [items, moveTo, onSelect])
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current
+    if (!toolbar) return
+    const measure = () => {
+      centersRef.current = [...toolbar.querySelectorAll<HTMLButtonElement>('.nav-item')]
+        .map((tab) => {
+          const rect = tab.getBoundingClientRect()
+          return rect.left - toolbar.getBoundingClientRect().left + rect.width / 2
+        })
+      const index = Math.max(0, items.findIndex((item) => item.label === selectedLabelRef.current))
+      const center = centersRef.current[index] ?? toolbar.clientWidth / 2
+      setVisualIndex(index)
+      if (initializedRef.current) {
+        moveTo(center)
+      } else {
+        positionRef.current = center
+        render(center)
+        setBeadSettled(true)
+        initializedRef.current = true
+      }
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(toolbar)
+    measure()
+    return () => {
+      observer.disconnect()
+      if (frameRef.current) cancelAnimationFrame(frameRef.current)
+      frameRef.current = 0
+      animationIdRef.current += 1
+    }
+  }, [items, moveTo, render])
+
+  useLayoutEffect(() => {
+    if (activeLabel === selectedLabelRef.current) return
+    selectedLabelRef.current = activeLabel
+    const index = Math.max(0, items.findIndex((item) => item.label === activeLabel))
+    setVisualIndex(index)
+    const center = centersRef.current[index]
+    if (center !== undefined) moveTo(center)
+  }, [activeLabel, items, moveTo])
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current
+    const hint = toolbar?.querySelector<HTMLElement>('.nav-add-hint')
+    if (!hint) return
+    hintWidthRef.current = hint.offsetWidth
+    render(positionRef.current)
+  }, [activeLabel, addKind, isTouchPointer, render])
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!event.isPrimary || event.button !== 0 || event.clientY > event.currentTarget.getBoundingClientRect().top + 126) return
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      pointerStartX: event.clientX,
+      startX: positionRef.current,
+    }
+    draggedRef.current = false
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = gestureRef.current
+    if (event.pointerId !== gesture.pointerId) return
+    const delta = event.clientX - gesture.pointerStartX
+    if (!draggedRef.current && Math.abs(delta) < 5) return
+    if (!draggedRef.current) {
+      draggedRef.current = true
+      event.currentTarget.setPointerCapture(event.pointerId)
+      event.currentTarget.classList.add('is-dragging')
+    }
+    const centers = centersRef.current
+    const minimum = Math.min(...centers)
+    const maximum = Math.max(...centers)
+    const nextPosition = Math.max(minimum, Math.min(maximum, gesture.startX + delta))
+    if (frameRef.current) cancelAnimationFrame(frameRef.current)
+    frameRef.current = 0
+    positionRef.current = nextPosition
+    setBeadSettled(false)
+    animationIdRef.current += 1
+    render(nextPosition)
+    const nearestIndex = centers.reduce(
+      (best, center, index) => Math.abs(center - nextPosition) < Math.abs(centers[best] - nextPosition) ? index : best,
+      0,
+    )
+    setVisualIndex(nearestIndex)
+  }
+
+  const finishPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = gestureRef.current
+    if (event.pointerId !== gesture.pointerId) return
+    gestureRef.current.pointerId = null
+    event.currentTarget.classList.remove('is-dragging')
+    if (!draggedRef.current) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const centers = centersRef.current
+    const selectedIndex = centers.reduce(
+      (best, center, index) => Math.abs(center - positionRef.current) < Math.abs(centers[best] - positionRef.current) ? index : best,
+      0,
+    )
+    selectIndex(selectedIndex)
+  }
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | undefined
+    if (event.key === 'ArrowRight') nextIndex = (index - 1 + items.length) % items.length
+    if (event.key === 'ArrowLeft') nextIndex = (index + 1) % items.length
+    if (event.key === 'Home') nextIndex = 0
+    if (event.key === 'End') nextIndex = items.length - 1
+    if (nextIndex === undefined) return
+    event.preventDefault()
+    selectIndex(nextIndex)
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('.nav-item')[nextIndex]?.focus()
+  }
+
+  return (
+    <nav
+      className="bottom-nav"
+      aria-label="ناوبری اصلی"
+      ref={toolbarRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointer}
+      onPointerCancel={finishPointer}
+    >
+      <div className="nav-ambient" aria-hidden="true" />
+      <svg className="nav-bar-surface" aria-hidden="true" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="nav-surface" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#1b1525" />
+            <stop offset="1" stopColor="#110d1a" />
+          </linearGradient>
+          <linearGradient id="nav-rim" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#a39aaf" stopOpacity=".7" />
+            <stop offset="1" stopColor="#60536f" stopOpacity=".17" />
+          </linearGradient>
+        </defs>
+        <path ref={pathRef} className="nav-surface-path" fill="url(#nav-surface)" stroke="url(#nav-rim)" strokeWidth="1.4" />
+      </svg>
+      <button
+        className={`nav-bead${onAdd && addKind ? ' nav-bead-add' : ''}`}
+        ref={(element) => { beadRef.current = element }}
+        type="button"
+        aria-label={onAdd && addKind ? addLabel : undefined}
+        title={onAdd && addKind ? addLabel : undefined}
+        aria-hidden={!onAdd || !addKind}
+        aria-disabled={!beadSettled}
+        tabIndex={onAdd && addKind ? 0 : -1}
+        onClick={onAdd && addKind ? () => {
+          if (!beadSettled || draggedRef.current) {
+            draggedRef.current = false
+            return
+          }
+          onAdd()
+        } : undefined}
+      >
+        <span className="nav-bead-sheen" aria-hidden="true" />
+        {onAdd && addKind && beadSettled && <ToolbarAddGlyph kind={addKind} />}
+      </button>
+      {onAdd && addKind && (
+        <span className={`nav-add-hint${beadSettled ? '' : ' is-hidden'}`} aria-hidden="true">
+          {isTouchPointer ? 'برای افزودن ضربه بزنید' : 'برای افزودن کلیک کنید'}
+        </span>
+      )}
+      <div className="nav-tabs">
+        {items.map((item, index) => (
+          <button
+            className={`nav-item${item.label === 'اشخاص' ? ' nav-item-people' : ''}`}
+            key={item.label}
+            type="button"
+            aria-current={visualIndex === index ? 'page' : undefined}
+            onClick={() => {
+              if (draggedRef.current) {
+                draggedRef.current = false
+                return
+              }
+              selectIndex(index)
+            }}
+            onKeyDown={(event) => handleKeyDown(event, index)}
+          >
+            <NavigationGlyph name={item.icon} />
+            <span className="nav-label">{item.label}</span>
+          </button>
+        ))}
+      </div>
+      <span className="home-indicator" aria-hidden="true" />
+    </nav>
+  )
+}
+
+function BasicToolbar({
+  items,
+  activeLabel,
+  onSelect,
+}: {
+  items: { icon: string; label: string }[]
+  activeLabel: string
+  onSelect: (label: string) => void
+}) {
+  return (
+    <nav className="basic-bottom-nav" aria-label="ناوبری اصلی">
+      {items.map((item) => (
+        <button
+          className="basic-nav-item"
+          key={item.label}
+          type="button"
+          aria-current={activeLabel === item.label ? 'page' : undefined}
+          onClick={() => onSelect(item.label)}
+        >
+          <NavigationGlyph name={item.icon} />
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 function PeopleToolbarIcon({ name }: { name: 'sort' | 'reports' | 'chart' }) {
   if (name === 'sort') {
     return (
@@ -264,7 +700,7 @@ const settingsSections = [
   { icon: 'refresh', label: 'پشتیبانگیری', description: 'مدیریت نسخه‌های پشتیبان', tone: 'cyan' },
   { icon: 'cart', label: 'تنظیمات فاکتور', description: 'شخصی‌سازی ثبت و نمایش فاکتور', tone: 'blue' },
   { icon: 'note', label: 'معرفی به دوستان', description: 'دعوت از دوستان برای آشنایی با ترازینو', tone: 'pink' },
-  { icon: 'sun', label: 'انتخاب تم', description: 'انتخاب رنگ‌بندی برنامه', tone: 'slate' },
+  { icon: 'sun', label: 'تنظیمات ظاهری', description: 'شخصی‌سازی رنگ و نوار ابزار برنامه', tone: 'slate' },
 ]
 
 const invoiceSettingsSections = [
@@ -399,6 +835,8 @@ const appColorThemes = [
 ] as const
 type AppColorTheme = (typeof appColorThemes)[number]['id']
 const COLOR_THEME_STORAGE_KEY = 'gerdoo-color-theme-v1'
+const SITE_TOOLBAR_STORAGE_KEY = 'gerdoo-site-toolbar-v1'
+type SiteToolbarStyle = 'basic' | 'floating'
 
 const securityLoginMethodOptions: Array<{
   id: SecurityLoginMethod
@@ -511,13 +949,16 @@ const documents = [
 ]
 
 const reports = [
-  { icon: 'chart', label: 'گزارش روزانه' },
-  { icon: 'chart', label: 'ریز گزارش روزانه' },
-  { icon: 'chart', label: 'گزارش دوره‌ای' },
-  { icon: 'chart', label: 'گزارش دارایی‌ها' },
-  { icon: 'chart', label: 'محاسبه سود فاکتور' },
-  { icon: 'chart', label: 'مجموع سود فاکتورها' },
-  { icon: 'chart', label: 'سود و زیان' },
+  { icon: 'chart', label: 'گزارش روزانه', description: 'مرور خلاصهٔ رویدادهای مالی' },
+  { icon: 'people', label: 'گزارش اشخاص', description: 'مانده و گردش طرف حساب‌ها' },
+  { icon: 'accounts', label: 'گزارش حساب‌ها', description: 'موجودی و گردش حساب‌ها' },
+  { icon: 'inventory', label: 'گزارش کالا و انبار', description: 'موجودی و عملکرد کالاها' },
+]
+
+const analyticalReports = [
+  { icon: 'chart', label: 'روند مالی', description: 'تغییرات مالی در بازه‌های زمانی' },
+  { icon: 'accounts', label: 'گزارش دارایی‌ها', description: 'نمای کلی دارایی‌های کسب‌وکار' },
+  { icon: 'cart', label: 'تحلیل سود فاکتورها', description: 'بررسی سود فروش و خرید' },
 ]
 
 const navigation = [
@@ -725,6 +1166,10 @@ type SalesInvoiceLine = {
   quantity: number
   discount: number
   unitPrice?: number
+  salePrice?: number
+  unit?: string
+  barcode?: string
+  draftItem?: InventoryRecord
   description?: string
 }
 
@@ -736,6 +1181,8 @@ type SavedSalesInvoiceLine = {
   unit: string
   quantity: number
   unitPrice: number
+  salePrice?: number
+  barcode?: string
   discount: number
   total: number
 }
@@ -1087,6 +1534,9 @@ function isSavedSalesInvoice(value: unknown): value is SavedSalesInvoice {
         && record.quantity > 0
         && typeof record.unitPrice === 'number'
         && Number.isFinite(record.unitPrice)
+        && (record.salePrice === undefined
+          || (typeof record.salePrice === 'number' && Number.isFinite(record.salePrice)))
+        && (record.barcode === undefined || typeof record.barcode === 'string')
         && typeof record.discount === 'number'
         && Number.isFinite(record.discount)
         && typeof record.total === 'number'
@@ -1488,6 +1938,13 @@ function isStoredInventoryOptions(value: unknown): value is StoredInventoryOptio
 
 type PeopleGroupMenu = {
   group: string
+  x: number
+  y: number
+}
+
+type PersonActionMenu = {
+  personId: string
+  name: string
   x: number
   y: number
 }
@@ -2554,6 +3011,9 @@ function App() {
   const [salesInvoiceDraftWarehouse, setSalesInvoiceDraftWarehouse] = useState(DEFAULT_INVENTORY_WAREHOUSE)
   const [salesInvoiceDraftQuantity, setSalesInvoiceDraftQuantity] = useState(1)
   const [salesInvoiceDraftPrice, setSalesInvoiceDraftPrice] = useState(0)
+  const [salesInvoiceDraftSalePrice, setSalesInvoiceDraftSalePrice] = useState(0)
+  const [salesInvoiceDraftUnit, setSalesInvoiceDraftUnit] = useState('عدد')
+  const [salesInvoiceDraftBarcode, setSalesInvoiceDraftBarcode] = useState('')
   const [salesInvoiceDraftDiscountPercent, setSalesInvoiceDraftDiscountPercent] = useState(0)
   const [salesInvoiceDraftDiscountAmount, setSalesInvoiceDraftDiscountAmount] = useState(0)
   const [salesInvoiceAdjustments, setSalesInvoiceAdjustments] = useState<SalesInvoiceAdjustment[]>([])
@@ -2674,6 +3134,8 @@ function App() {
   const [personFormOpen, setPersonFormOpen] = useState(false)
   const [personFormTab, setPersonFormTab] = useState<'basic' | 'extra'>('basic')
   const [personFormFields, setPersonFormFields] = useState<PersonFormFields>(emptyPersonForm)
+  const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
+  const [personDetailId, setPersonDetailId] = useState<string | null>(null)
   const [personFormError, setPersonFormError] = useState('')
   const [personGroupPickerOpen, setPersonGroupPickerOpen] = useState(false)
   const [peopleGroupState, setPeopleGroupState] = useState(() => readStoredPeopleGroups(activeStoreId))
@@ -2681,9 +3143,11 @@ function App() {
   const [isAddingPeopleGroup, setIsAddingPeopleGroup] = useState(false)
   const [editingPeopleGroup, setEditingPeopleGroup] = useState<string | null>(null)
   const [peopleGroupMenu, setPeopleGroupMenu] = useState<PeopleGroupMenu | null>(null)
+  const [personActionMenu, setPersonActionMenu] = useState<PersonActionMenu | null>(null)
   const [peopleGroupError, setPeopleGroupError] = useState('')
   const closePersonForm = useCallback(() => {
     setPersonFormOpen(false)
+    setEditingPersonId(null)
     if (!salesInvoicePersonPickerReturnTab) return
     setActiveTab(salesInvoicePersonPickerReturnTab)
     setSalesInvoicePersonPickerReturnTab(null)
@@ -2713,6 +3177,10 @@ function App() {
   const peopleGroupPressTimer = useRef<number | null>(null)
   const peopleGroupPressOrigin = useRef<{ x: number; y: number } | null>(null)
   const suppressPeopleGroupClick = useRef(false)
+  const personActionPressTimer = useRef<number | null>(null)
+  const personActionPressOrigin = useRef<{ x: number; y: number } | null>(null)
+  const suppressPersonActionClick = useRef(false)
+  const personDetailCloseButtonRef = useRef<HTMLButtonElement>(null)
   const peopleFilterDrag = useRef<PeopleFilterDrag | null>(null)
   const suppressPeopleFilterClick = useRef(false)
   const inventoryFilterDrag = useRef<(PeopleFilterDrag & { container: 'groups' | 'categories' }) | null>(null)
@@ -2832,6 +3300,9 @@ function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (
     localStorage.getItem('trazino-theme') === 'dark' ? 'dark' : 'light'
   ))
+  const [siteToolbarStyle, setSiteToolbarStyle] = useState<SiteToolbarStyle>(() => (
+    localStorage.getItem(SITE_TOOLBAR_STORAGE_KEY) === 'basic' ? 'basic' : 'floating'
+  ))
   const [colorTheme, setColorTheme] = useState<AppColorTheme>(() => {
     const storedTheme = appColorThemes.find(
       (option) => option.id === localStorage.getItem(COLOR_THEME_STORAGE_KEY),
@@ -2888,6 +3359,14 @@ function App() {
     if (person.accountStatus === 'بستانکاران') totals.credit += person.balance
     return totals
   }, { debit: 0, credit: 0 })
+  const reportMonth = getIranDateValue(new Date()).slice(0, 7)
+  const reportMonthlyTotals = storedMoneyDocuments.documents.reduce((totals, document) => {
+    if (document.date.slice(0, 7) !== reportMonth) return totals
+    if (document.kind === 'دریافت') totals.received += document.amount
+    if (document.kind === 'پرداخت') totals.paid += document.amount
+    return totals
+  }, { received: 0, paid: 0 })
+  const reportAccountsTotal = storedAccounts.accounts.reduce((total, account) => total + account.balance, 0)
   const accountReportStatusCounts = accountReportPeople.reduce((counts, person) => {
     counts[person.accountStatus] += 1
     return counts
@@ -2975,13 +3454,15 @@ function App() {
       item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
     )) === salesInvoiceDraftWarehouse
   ))
-  const salesInvoicePickerItems = useMemo(() => [
-    ...storedInventoryRecords.items.filter((item) => (
+  const salesInvoicePickerItems = useMemo(() => {
+    const goods = storedInventoryRecords.items.filter((item) => (
       item.kind === 'کالا'
-      && (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === salesInvoiceDraftWarehouse
-    )),
-    ...inventoryServiceItems,
-  ], [storedInventoryRecords.items, salesInvoiceDraftWarehouse, inventoryServiceItems])
+      && (activeTab === 'فاکتور خرید'
+        || (item.warehouse ?? DEFAULT_INVENTORY_WAREHOUSE) === salesInvoiceDraftWarehouse)
+    ))
+    const uniqueGoods = [...new Map(goods.map((item) => [item.catalogId ?? item.id, item])).values()]
+    return [...uniqueGoods, ...inventoryServiceItems]
+  }, [storedInventoryRecords.items, salesInvoiceDraftWarehouse, inventoryServiceItems, activeTab])
   const inventoryStocktakeRecords = storedInventoryRecords.items.filter((item) => (
     item.kind === inventoryKind
     && (item.warehouse ?? (
@@ -3161,7 +3642,7 @@ function App() {
     0,
     (salesInvoiceConfirmation?.total ?? 0) - salesInvoiceReceivedTotal,
   )
-  const invoicePeople = purchaseInvoicePartyMode
+  const invoicePeople = returnPurchaseInvoiceMode
     ? allPeople.filter((person) => person.role === 'تأمین‌کننده')
     : allPeople
   const filteredSalesInvoicePeople = invoicePeople.filter((person) => (
@@ -3179,6 +3660,7 @@ function App() {
   const selectedSalesInvoicePerson = invoicePeople.find((person) => person.id === salesInvoicePerson)
   const salesInvoiceSubtotal = salesInvoiceLines.reduce((total, line) => {
     const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
+      ?? line.draftItem
     if (!item) return total
     return total + Math.max(0, (line.unitPrice ?? item.salePrice) * line.quantity - line.discount)
   }, 0)
@@ -3289,6 +3771,10 @@ function App() {
     localStorage.setItem('trazino-theme', theme)
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem(SITE_TOOLBAR_STORAGE_KEY, siteToolbarStyle)
+  }, [siteToolbarStyle])
 
   useEffect(() => {
     localStorage.setItem(COLOR_THEME_STORAGE_KEY, colorTheme)
@@ -3684,6 +4170,26 @@ function App() {
   }, [peopleGroupMenu])
 
   useEffect(() => {
+    if (!personActionMenu) return
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      if (event.target.closest('.person-action-menu, .person-action-trigger')) return
+      setPersonActionMenu(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPersonActionMenu(null)
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [personActionMenu])
+
+  useEffect(() => {
     if (!inventoryActionItem) return
 
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -3712,6 +4218,16 @@ function App() {
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [inventoryDetailItemId])
+
+  useEffect(() => {
+    if (!personDetailId) return
+    personDetailCloseButtonRef.current?.focus()
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPersonDetailId(null)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [personDetailId])
 
   useEffect(() => {
     if (!inventoryStocktakeOpen) return
@@ -5259,6 +5775,7 @@ function App() {
       }))
       : salesInvoiceLines.flatMap((line) => {
         const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
+          ?? line.draftItem
         if (!item) return []
         const unitPrice = line.unitPrice ?? item.salePrice
         return [{
@@ -5873,8 +6390,8 @@ function App() {
       if (storedPurchaseInvoices.error) throw new Error(storedPurchaseInvoices.error)
       if (storedInventoryRecords.error) throw new Error(storedInventoryRecords.error)
       if (storedPeopleState.error) throw new Error(storedPeopleState.error)
-      if (!selectedSalesInvoicePerson || selectedSalesInvoicePerson.role !== 'تأمین‌کننده') {
-        throw new Error('برای ثبت فاکتور خرید، انتخاب تأمین‌کننده الزامی است.')
+      if (!selectedSalesInvoicePerson) {
+        throw new Error('برای ثبت فاکتور خرید، انتخاب طرف حساب الزامی است.')
       }
       if (!salesInvoiceLines.length) throw new Error('برای ثبت فاکتور خرید، ابتدا کالا یا خدمات اضافه کنید.')
       if (!Number.isSafeInteger(salesInvoiceTotal)) {
@@ -5883,6 +6400,27 @@ function App() {
 
       const nowIso = now.toISOString()
       const itemById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
+      for (const line of salesInvoiceLines) {
+        const sourceItem = itemById.get(line.itemId) ?? line.draftItem
+        if (!sourceItem) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
+        const normalizedBarcode = normalizeInventorySearchText(line.barcode?.trim() ?? '')
+        if (normalizedBarcode && [...itemById.values()].some((item) => (
+          (item.catalogId ?? item.id) !== (sourceItem.catalogId ?? sourceItem.id)
+          && normalizeInventorySearchText(item.barcode ?? '') === normalizedBarcode
+        ))) {
+          throw new Error(`بارکد «${line.barcode}» قبلاً برای کالای دیگری ثبت شده است.`)
+        }
+        if (itemById.has(line.itemId)) continue
+        const newDraftItem = line.draftItem
+        if (!newDraftItem) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
+        const newItem = {
+          ...newDraftItem,
+          unit: line.unit ?? newDraftItem.unit,
+          barcode: line.barcode?.trim() || newDraftItem.barcode,
+          salePrice: line.salePrice ?? newDraftItem.salePrice,
+        }
+        itemById.set(line.itemId, newItem)
+      }
       const purchaseLines: SavedSalesInvoiceLine[] = salesInvoiceLines.map((line) => {
         const item = itemById.get(line.itemId)
         if (!item) throw new Error('یکی از کالاها یا خدمات فاکتور دیگر در فهرست موجود نیست.')
@@ -5891,14 +6429,16 @@ function App() {
         if (!Number.isFinite(total)) throw new Error(`مبلغ «${item.name}» معتبر نیست.`)
         return {
           itemId: item.id,
-          warehouse: item.warehouse ?? (
+          warehouse: line.warehouse ?? item.warehouse ?? (
             item.kind === 'خدمات' ? DEFAULT_SERVICE_WAREHOUSE : DEFAULT_INVENTORY_WAREHOUSE
           ),
           description: line.description || item.name,
           kind: item.kind,
-          unit: item.unit,
+          unit: line.unit ?? item.unit,
           quantity: line.quantity,
           unitPrice,
+          salePrice: line.salePrice ?? item.salePrice,
+          barcode: line.barcode?.trim() || item.barcode,
           discount: line.discount,
           total,
         }
@@ -5918,22 +6458,28 @@ function App() {
           ...previous,
           stock: nextStock,
           purchasePrice: line.unitPrice,
+          salePrice: line.salePrice ?? previous.salePrice,
+          unit: line.unit || previous.unit,
+          barcode: line.barcode?.trim() || previous.barcode,
           lastMovementAt: nowIso,
         })
       }
-      const updatedInventoryRows = [
-        ...storedInventoryRecords.items.filter((item) => !updatedItemById.has(item.id)),
-        ...storedInventoryRecords.items
-          .filter((item) => updatedItemById.has(item.id))
-          .map((item) => updatedItemById.get(item.id)!),
-        ...[...updatedItemById.values()].filter((item) => (
-          !storedInventoryRecords.items.some((storedItem) => storedItem.id === item.id)
-        )),
-      ]
-      const updatedInventory = [...updatedItemById.values()].reduce(
-        (items, item) => updateInventoryCatalogPrices(items, item.id, { purchasePrice: item.purchasePrice }),
-        updatedInventoryRows,
-      )
+      const updatedInventoryRows = [...updatedItemById.values()].reduce((items, item) => {
+        const found = items.some((storedItem) => storedItem.id === item.id)
+        return found
+          ? items.map((storedItem) => storedItem.id === item.id ? item : storedItem)
+          : [...items, item]
+      }, storedInventoryRecords.items)
+      const updatedInventory = [...updatedItemById.values()].reduce((items, item) => {
+        const catalogId = item.catalogId ?? item.id
+        const nextItems = updateInventoryCatalogPrices(items, item.id, {
+          purchasePrice: item.purchasePrice,
+          salePrice: item.salePrice,
+        })
+        return nextItems.map((storedItem) => (storedItem.catalogId ?? storedItem.id) === catalogId
+          ? { ...storedItem, unit: item.unit, barcode: item.barcode }
+          : storedItem)
+      }, updatedInventoryRows)
 
       const attachment = salesInvoiceAttachment
         ? await new Promise<{ name: string; type: string; dataUrl: string }>((resolve, reject) => {
@@ -5979,7 +6525,7 @@ function App() {
       const nextSupplierBalance = signedSupplierBalance - invoice.total
       const nextTransactionCount = (selectedSalesInvoicePerson.transactionCount ?? 0) + 1
       if (!Number.isSafeInteger(nextSupplierBalance) || !Number.isSafeInteger(nextTransactionCount)) {
-        throw new Error('ماندهٔ تأمین‌کننده پس از ثبت فاکتور معتبر نیست.')
+        throw new Error('ماندهٔ طرف حساب پس از ثبت فاکتور معتبر نیست.')
       }
       const updatedSupplier: PersonRecord = {
         ...selectedSalesInvoicePerson,
@@ -6024,7 +6570,7 @@ function App() {
         }
         throw new Error(rollbackFailed
           ? 'ثبت فاکتور خرید کامل نشد و بازگردانی همهٔ اطلاعات ممکن نبود؛ موجودی و مانده‌ها را بررسی کنید.'
-          : 'ذخیرهٔ فاکتور خرید انجام نشد؛ تغییرات موجودی و ماندهٔ تأمین‌کننده بازگردانده شد.')
+          : 'ذخیرهٔ فاکتور خرید انجام نشد؛ تغییرات موجودی و ماندهٔ طرف حساب بازگردانده شد.')
       }
 
       setStoredPurchaseInvoices({ invoices, error: '' })
@@ -6038,7 +6584,7 @@ function App() {
       setSalesInvoiceDraftAttachment(null)
       setSalesInvoiceConfirmation(null)
       setActiveTab('خانه')
-      setNotice('فاکتور خرید ثبت شد؛ موجودی انبار و ماندهٔ تأمین‌کننده به‌روز شد.')
+      setNotice('فاکتور خرید ثبت شد؛ موجودی انبار و ماندهٔ طرف حساب به‌روز شد.')
       window.setTimeout(() => setNotice(''), 3500)
     } catch (error) {
       setSalesInvoiceSaveError(error instanceof Error
@@ -6515,6 +7061,9 @@ function App() {
       : DEFAULT_INVENTORY_WAREHOUSE)
     setSalesInvoiceDraftQuantity(1)
     setSalesInvoiceDraftPrice(0)
+    setSalesInvoiceDraftSalePrice(0)
+    setSalesInvoiceDraftUnit(storedInventoryUnits.units[0] ?? 'عدد')
+    setSalesInvoiceDraftBarcode('')
     setSalesInvoiceDraftDiscountPercent(0)
     setSalesInvoiceDraftDiscountAmount(0)
     setSalesInvoiceItemPickerOpen(true)
@@ -6543,9 +7092,52 @@ function App() {
       : salesInvoiceSettings.autoSalesPricePercent && item.purchasePrice > 0
         ? Math.round(item.purchasePrice * (1 + salesInvoiceSettings.salePriceMarkupPercent / 100))
         : item.salePrice)
+    setSalesInvoiceDraftSalePrice(item.salePrice)
+    setSalesInvoiceDraftUnit(item.unit)
+    setSalesInvoiceDraftBarcode(item.barcode ?? '')
     setSalesInvoiceDraftDiscountPercent(0)
     setSalesInvoiceDraftDiscountAmount(0)
   }, [purchaseInvoicePartyMode, salesInvoiceSettings])
+
+  const startNewPurchaseInvoiceItem = (name: string) => {
+    const trimmedName = name.trim()
+    if (!trimmedName) return undefined
+    const nextCode = Math.max(0, ...storedInventoryRecords.items
+      .filter((item) => item.kind === 'کالا')
+      .map((item, index) => parsePersonCode(item.code ?? String(index + 1))))
+      + salesInvoiceLines.filter((line) => line.draftItem).length + 1
+    const id = `purchase-draft-${activeStoreId ?? 'store'}-${Date.now()}`
+    const createdAt = now.toISOString()
+    const item: InventoryRecord = {
+      id,
+      catalogId: id,
+      code: formatPersonCode(nextCode),
+      name: trimmedName,
+      createdAt,
+      lastMovementAt: createdAt,
+      group: inventoryOptions.groupsByKind['کالا'][0] ?? 'بدون گروه',
+      category: 'بدون دسته‌بندی',
+      kind: 'کالا',
+      brand: '—',
+      unit: storedInventoryUnits.units[0] ?? 'عدد',
+      stock: 0,
+      purchasePrice: 0,
+      salePrice: 0,
+      barcode: '',
+      warehouse: salesInvoiceDraftWarehouse,
+      stockMovements: [],
+    }
+    setSalesInvoiceDraftItem(item)
+    setSalesInvoiceDraftDescription(trimmedName)
+    setSalesInvoiceDraftUnit(item.unit)
+    setSalesInvoiceDraftSalePrice(0)
+    setSalesInvoiceDraftPrice(0)
+    setSalesInvoiceDraftQuantity(1)
+    setSalesInvoiceDraftDiscountPercent(0)
+    setSalesInvoiceDraftDiscountAmount(0)
+    setSalesInvoiceItemOptionsOpen(false)
+    return item
+  }
 
   useEffect(() => {
     if (!salesInvoiceBarcodeScannerOpen) return
@@ -6597,6 +7189,17 @@ function App() {
           ))
 
           if (!item) {
+            if (purchaseInvoiceMode) {
+              resultHandled = true
+              controls?.stop()
+              setSalesInvoiceBarcodeScannerError('')
+              setSalesInvoiceBarcodeScannerOpen(false)
+              setSalesInvoiceItemPickerOpen(true)
+              setSalesInvoiceBarcodeMode(false)
+              setSalesInvoiceDraftBarcode(barcode)
+              setSalesInvoiceItemOptionsOpen(Boolean(salesInvoiceItemSearch.trim()))
+              return
+            }
             if (lastScannedBarcodeRef.current !== barcode) {
               lastScannedBarcodeRef.current = barcode
               setSalesInvoiceBarcodeScannerError(`کالایی با بارکد «${barcode}» در فهرست کالاها پیدا نشد.`)
@@ -6627,6 +7230,8 @@ function App() {
     salesInvoicePickerItems,
     salesInvoiceBarcodeScannerOpen,
     selectSalesInvoiceItem,
+    purchaseInvoiceMode,
+    salesInvoiceItemSearch,
   ])
 
   const openSalesInvoiceCatalog = () => {
@@ -6642,24 +7247,40 @@ function App() {
   }
 
   const commitSalesInvoiceDraftItem = (closeAfter: boolean) => {
-    if (!salesInvoiceDraftItem) {
-      setNotice('ابتدا کالا یا خدمات را انتخاب کنید.')
+    let draftItem = salesInvoiceDraftItem
+    if (!draftItem && purchaseInvoiceMode && salesInvoiceItemSearch.trim()) {
+      const normalizedName = normalizeInventorySearchText(salesInvoiceItemSearch.trim())
+      const existingItem = salesInvoicePickerItems.find((item) => (
+        normalizeInventorySearchText(item.name) === normalizedName
+      ))
+      if (existingItem) {
+        selectSalesInvoiceItem(existingItem)
+        setNotice('کالای موجود از انبار انتخاب شد؛ اطلاعات خرید را بررسی و دوباره ثبت کنید.')
+        window.setTimeout(() => setNotice(''), 3000)
+        return
+      }
+      draftItem = startNewPurchaseInvoiceItem(salesInvoiceItemSearch) ?? null
+    }
+    if (!draftItem) {
+      setNotice('ابتدا کالا یا خدمات را انتخاب کنید یا نام کالای جدید را وارد کنید.')
       window.setTimeout(() => setNotice(''), 2600)
       return
     }
     const grossAmount = salesInvoiceDraftPrice * salesInvoiceDraftQuantity
-    const discount = salesInvoiceSettings.enableItemDiscount
+    const discount = !purchaseInvoiceMode && salesInvoiceSettings.enableItemDiscount
       ? Math.min(grossAmount,
         Math.round(grossAmount * salesInvoiceDraftDiscountPercent / 100) + salesInvoiceDraftDiscountAmount)
       : 0
     const description = salesInvoiceSettings.enableItemDescription
-      ? salesInvoiceDraftDescription.trim() || salesInvoiceDraftItem.name
-      : salesInvoiceDraftItem.name
+      ? salesInvoiceDraftDescription.trim() || draftItem.name
+      : draftItem.name
 
     if (
+      !purchaseInvoiceMode
+      &&
       !returnInvoiceMode
       && salesInvoiceSettings.updateInventoryPrice
-      && salesInvoiceDraftPrice !== salesInvoiceDraftItem.salePrice
+      && salesInvoiceDraftPrice !== draftItem.salePrice
     ) {
       if (storedInventoryRecords.error) {
         setNotice(storedInventoryRecords.error)
@@ -6667,7 +7288,7 @@ function App() {
         return
       }
       const updatedItem = {
-        ...salesInvoiceDraftItem,
+        ...draftItem,
         salePrice: salesInvoiceDraftPrice,
       }
       const updatedInventoryRows = storedInventoryRecords.items.some((item) => item.id === updatedItem.id)
@@ -6693,9 +7314,10 @@ function App() {
 
     setSalesInvoiceLines((lines) => {
       const existing = lines.find((line) => (
-        line.itemId === salesInvoiceDraftItem.id
-        && (line.unitPrice ?? salesInvoiceDraftItem.salePrice) === salesInvoiceDraftPrice
-        && (line.description ?? salesInvoiceDraftItem.name) === description
+        line.itemId === draftItem.id
+        && (line.unitPrice ?? draftItem.salePrice) === salesInvoiceDraftPrice
+        && (!purchaseInvoiceMode || (line.salePrice ?? draftItem.salePrice) === salesInvoiceDraftSalePrice)
+        && (line.description ?? draftItem.name) === description
         && (line.warehouse ?? salesInvoiceDraftWarehouse) === salesInvoiceDraftWarehouse
       ))
       if (existing) {
@@ -6705,18 +7327,30 @@ function App() {
             quantity: line.quantity + salesInvoiceDraftQuantity,
             discount: line.discount + discount,
             unitPrice: salesInvoiceDraftPrice,
+            salePrice: purchaseInvoiceMode ? salesInvoiceDraftSalePrice : line.salePrice,
+            unit: purchaseInvoiceMode ? salesInvoiceDraftUnit : line.unit,
+            barcode: purchaseInvoiceMode ? salesInvoiceDraftBarcode : line.barcode,
+            draftItem: storedInventoryRecords.items.some((item) => item.id === draftItem.id)
+              ? undefined
+              : draftItem,
             description,
             warehouse: salesInvoiceDraftWarehouse,
           }
           : line)
       }
       return [...lines, {
-        id: `${salesInvoiceDraftItem.id}-${Date.now()}`,
-        itemId: salesInvoiceDraftItem.id,
+        id: `${draftItem.id}-${Date.now()}`,
+        itemId: draftItem.id,
         warehouse: salesInvoiceDraftWarehouse,
         quantity: salesInvoiceDraftQuantity,
         discount,
         unitPrice: salesInvoiceDraftPrice,
+        salePrice: purchaseInvoiceMode ? salesInvoiceDraftSalePrice : undefined,
+        unit: purchaseInvoiceMode ? salesInvoiceDraftUnit : draftItem.unit,
+        barcode: purchaseInvoiceMode ? salesInvoiceDraftBarcode : undefined,
+        draftItem: storedInventoryRecords.items.some((item) => item.id === draftItem.id)
+          ? undefined
+          : draftItem,
         description,
       }]
     })
@@ -6730,6 +7364,9 @@ function App() {
       setSalesInvoiceItemOptionsOpen(true)
       setSalesInvoiceDraftQuantity(1)
       setSalesInvoiceDraftPrice(0)
+      setSalesInvoiceDraftSalePrice(0)
+      setSalesInvoiceDraftUnit(storedInventoryUnits.units[0] ?? 'عدد')
+      setSalesInvoiceDraftBarcode('')
       setSalesInvoiceDraftDiscountPercent(0)
       setSalesInvoiceDraftDiscountAmount(0)
     }
@@ -6889,7 +7526,7 @@ function App() {
       || person.accountStatus === peopleFilter
       || person.role === peopleFilter
       || person.group === peopleFilter)
-    .filter((person) => `${person.name} ${person.phone}`.includes(peopleSearch.trim()))
+    .filter((person) => `${person.name} ${person.code} ${person.phone}`.includes(peopleSearch.trim()))
     .sort((first, second) => {
       const byName = () => first.name.localeCompare(second.name, 'fa', { numeric: true, sensitivity: 'base' })
       if (peopleSortBy === 'createdAt' && Boolean(first.createdAt) !== Boolean(second.createdAt)) {
@@ -6918,6 +7555,9 @@ function App() {
                   : 0
       return peopleSortDirection === 'asc' ? comparison : -comparison
     })
+  const personDetail = personDetailId
+    ? allPeople.find((person) => person.id === personDetailId)
+    : undefined
 
   const downloadPeopleCsv = () => {
     const csvCell = (value: string | number) => {
@@ -7557,6 +8197,7 @@ function App() {
       : peopleGroupState.groups.includes(peopleFilter)
         ? peopleFilter
       : peopleGroupState.groups.length === 1 ? peopleGroupState.groups[0] : ''
+    setEditingPersonId(null)
     setPersonFormRole(role)
     setPersonFormFields({
       ...emptyPersonForm,
@@ -7566,6 +8207,111 @@ function App() {
     setPersonFormTab('basic')
     setPersonFormError('')
     setPersonFormOpen(true)
+  }
+
+  const openPersonEditForm = (person: PersonRecord) => {
+    setPersonActionMenu(null)
+    setEditingPersonId(person.id)
+    setPersonFormRole(person.role)
+    setPersonFormFields({
+      code: person.code,
+      name: person.name,
+      group: person.group ?? '',
+      phone: person.phone,
+      address: person.address,
+      accountNumber: person.accountNumber,
+      balance: formatAccountBalanceInput(String(person.balance)),
+      balanceDirection: person.accountStatus === 'بستانکاران' ? 'credit' : 'debit',
+    })
+    setPersonFormTab('basic')
+    setPersonFormError('')
+    setPersonFormOpen(true)
+  }
+
+  const openPersonActionMenu = (person: PersonRecord, x: number, y: number) => {
+    setPersonActionMenu({
+      personId: person.id,
+      name: person.name,
+      x: Math.max(8, Math.min(x, window.innerWidth - 190)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 120)),
+    })
+  }
+
+  const clearPersonActionPressTimer = () => {
+    if (personActionPressTimer.current !== null) {
+      window.clearTimeout(personActionPressTimer.current)
+      personActionPressTimer.current = null
+    }
+    personActionPressOrigin.current = null
+  }
+
+  const startPersonActionPress = (event: ReactPointerEvent<HTMLElement>, person: PersonRecord) => {
+    clearPersonActionPressTimer()
+    suppressPersonActionClick.current = false
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+    if ((event.target as Element).closest('.person-action-trigger')) return
+    const { clientX, clientY } = event
+    personActionPressOrigin.current = { x: clientX, y: clientY }
+    personActionPressTimer.current = window.setTimeout(() => {
+      suppressPersonActionClick.current = true
+      openPersonActionMenu(person, clientX, clientY)
+      personActionPressTimer.current = null
+    }, 550)
+  }
+
+  const movePersonActionPress = (event: ReactPointerEvent<HTMLElement>) => {
+    const origin = personActionPressOrigin.current
+    if (!origin) return
+    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+      clearPersonActionPressTimer()
+    }
+  }
+
+  const activatePersonActionMenu = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    person: PersonRecord,
+  ) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    openPersonActionMenu(person, bounds.left, bounds.bottom + 5)
+  }
+
+  const performPersonAction = (action: 'edit' | 'delete') => {
+    const target = personActionMenu
+    if (!target) return
+    const person = storedPeopleState.people.find((item) => item.id === target.personId)
+    if (!person) {
+      setPersonActionMenu(null)
+      setNotice('شخص موردنظر پیدا نشد؛ فهرست را تازه‌سازی کنید.')
+      window.setTimeout(() => setNotice(''), 3000)
+      return
+    }
+
+    if (action === 'edit') {
+      openPersonEditForm(person)
+      return
+    }
+    if (storedPeopleState.error) {
+      setPersonActionMenu(null)
+      setNotice(storedPeopleState.error)
+      window.setTimeout(() => setNotice(''), 3000)
+      return
+    }
+
+    const people = storedPeopleState.people.filter((item) => item.id !== person.id)
+    try {
+      localStorage.setItem(
+        getActiveStoreDataStorageKey(PEOPLE_STORAGE_KEY, activeStoreId),
+        JSON.stringify(people),
+      )
+      setStoredPeopleState({ people, error: '' })
+      setPersonActionMenu(null)
+      setNotice(`«${person.name}» از فهرست اشخاص حذف شد.`)
+      window.setTimeout(() => setNotice(''), 3000)
+    } catch {
+      setPersonActionMenu(null)
+      setNotice('حذف شخص ذخیره نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+      window.setTimeout(() => setNotice(''), 3000)
+    }
   }
 
   const savePerson = (event: FormEvent<HTMLFormElement>) => {
@@ -7602,8 +8348,16 @@ function App() {
       return
     }
 
+    const existingPerson = editingPersonId
+      ? storedPeopleState.people.find((item) => item.id === editingPersonId)
+      : undefined
+    if (editingPersonId && !existingPerson) {
+      setPersonFormError('شخص موردنظر برای ویرایش پیدا نشد؛ فهرست را تازه‌سازی کنید.')
+      return
+    }
+
     const person: PersonRecord = {
-      id: `person-${Date.now()}`,
+      id: existingPerson?.id ?? `person-${Date.now()}`,
       code: personFormFields.code,
       name,
       group: personFormFields.group,
@@ -7615,11 +8369,13 @@ function App() {
         ? 'تسویه شده'
         : personFormFields.balanceDirection === 'debit' ? 'بدهکاران' : 'بستانکاران',
       balance,
-      tone: ['mint', 'blue', 'amber', 'violet', 'coral'][storedPeopleState.people.length % 5],
-      createdAt: new Date().toISOString(),
-      transactionCount: 0,
+      tone: existingPerson?.tone ?? ['mint', 'blue', 'amber', 'violet', 'coral'][storedPeopleState.people.length % 5],
+      createdAt: existingPerson?.createdAt ?? new Date().toISOString(),
+      transactionCount: existingPerson?.transactionCount ?? 0,
     }
-    const people = [...storedPeopleState.people, person]
+    const people = existingPerson
+      ? storedPeopleState.people.map((item) => item.id === existingPerson.id ? person : item)
+      : [...storedPeopleState.people, person]
     try {
       localStorage.setItem(
         getActiveStoreDataStorageKey(PEOPLE_STORAGE_KEY, activeStoreId),
@@ -7629,7 +8385,9 @@ function App() {
       setPeopleSearch('')
       setPeopleFilter('همه')
       setPersonFormOpen(false)
+      setEditingPersonId(null)
       setPersonFormError('')
+      setPersonActionMenu(null)
       if (salesInvoicePersonPickerReturnTab) {
         setSalesInvoicePerson(person.id)
         setSalesInvoicePartyError('')
@@ -8482,9 +9240,51 @@ function App() {
   }, [activeTab])
 
   const visibleAccounts = storedAccounts.accounts.filter((account) => account.kind === accountListFilter)
+  const hiddenNavigationTabs = [
+    'فاکتور فروش',
+    'فاکتور خرید',
+    'برگشت از فروش',
+    'برگشت به خرید',
+    'فهرست برگشت از فروش',
+    'فهرست برگشت به خرید',
+    'جزئیات فاکتور برگشت',
+    'فهرست چک‌های دریافتی',
+    'فهرست چک‌های پرداختی',
+    'جزئیات چک',
+    'فهرست درآمدها',
+    'فهرست هزینه‌ها',
+    'فهرست دریافت‌ها',
+    'فهرست پرداخت‌ها',
+    'تنظیمات',
+    'فروشگاه',
+  ]
+  const showBottomNavigation = demoEntered && stores.length > 0 && !hiddenNavigationTabs.includes(activeTab)
+  const activeNavigationLabel = ['گزارشات طرف حساب‌ها', 'گزارشات'].includes(activeTab)
+    ? 'گزارش‌ها'
+    : activeTab === 'فروشگاه' ? 'خانه' : activeTab
+  const toolbarAddKind: 'people' | 'product' | 'service' | 'production' | 'accounts' | null =
+    activeNavigationLabel === 'اشخاص'
+      ? 'people'
+      : activeNavigationLabel === 'کالا و انبار'
+        ? inventoryKind === 'کالا' ? 'product' : inventoryKind === 'خدمات' ? 'service' : 'production'
+        : activeNavigationLabel === 'حساب‌ها' ? 'accounts' : null
+  const toolbarAddLabel = activeNavigationLabel === 'اشخاص'
+    ? 'افزودن شخص'
+    : activeNavigationLabel === 'کالا و انبار'
+      ? `افزودن ${inventoryKind === 'کالا' ? 'کالا' : inventoryKind === 'خدمات' ? 'خدمت' : 'تولید'}`
+      : activeNavigationLabel === 'حساب‌ها' ? 'افزودن حساب' : ''
+  const toolbarAddHandler = activeNavigationLabel === 'اشخاص'
+    ? () => openPersonForm()
+    : activeNavigationLabel === 'کالا و انبار'
+      ? () => {
+        if (inventoryKind === 'کالا') openInventoryProductForm()
+        else if (inventoryKind === 'خدمات') openInventoryServiceForm()
+        else showComingSoon(`فرم ثبت ${inventoryKind} در طراحی جداگانه آماده می‌شود.`)
+      }
+      : activeNavigationLabel === 'حساب‌ها' ? openAccountForm : null
 
   return (
-    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${[
+    <div className={`app-frame ${demoEntered ? '' : 'auth-mode'} ${showBottomNavigation ? 'has-bottom-nav' : ''} ${showBottomNavigation && siteToolbarStyle === 'basic' ? 'site-toolbar-basic' : ''} ${[
       'فاکتور فروش',
       'فاکتور خرید',
       'برگشت از فروش',
@@ -8695,12 +9495,16 @@ function App() {
             <header className="settings-page-heading">
               <button
                 type="button"
-                aria-label={activeSettingsSection ? 'بازگشت به تنظیمات' : 'بازگشت به داشبورد'}
+                aria-label={['انتخاب تم', 'انتخاب تولبار سایت'].includes(activeSettingsSection)
+                  ? 'بازگشت به تنظیمات ظاهری'
+                  : activeSettingsSection ? 'بازگشت به تنظیمات' : 'بازگشت به داشبورد'}
                 onClick={() => {
-                  if (activeSettingsSection) {
-                    setActiveSettingsSection('')
-                  } else {
-                    setActiveTab('خانه')
+                    if (['انتخاب تم', 'انتخاب تولبار سایت'].includes(activeSettingsSection)) {
+                      setActiveSettingsSection('تنظیمات ظاهری')
+                    } else if (activeSettingsSection) {
+                      setActiveSettingsSection('')
+                    } else {
+                      setActiveTab('خانه')
                   }
                 }}
               >
@@ -9297,6 +10101,44 @@ function App() {
                   </div>
                 )}
               </section>
+            ) : activeSettingsSection === 'تنظیمات ظاهری' ? (
+              <>
+                <section className="settings-page-intro">
+                  <span className="settings-page-intro-icon" aria-hidden="true">
+                    <Icon name="sun" />
+                  </span>
+                  <div>
+                    <h2>ظاهر برنامه را شخصی‌سازی کن</h2>
+                    <p>رنگ‌بندی و طرح نوار ابزار سایت را انتخاب کن.</p>
+                  </div>
+                </section>
+                <nav className="settings-section-list" aria-label="تنظیمات ظاهری">
+                  <button
+                    className="settings-section-button"
+                    type="button"
+                    onClick={() => setActiveSettingsSection('انتخاب تم')}
+                  >
+                    <span className="settings-section-icon slate"><Icon name="sun" /></span>
+                    <span className="settings-section-copy">
+                      <strong>انتخاب تم</strong>
+                      <span>انتخاب رنگ‌بندی برنامه</span>
+                    </span>
+                    <span className="settings-section-arrow" aria-hidden="true">‹</span>
+                  </button>
+                  <button
+                    className="settings-section-button"
+                    type="button"
+                    onClick={() => setActiveSettingsSection('انتخاب تولبار سایت')}
+                  >
+                    <span className="settings-section-icon blue"><Icon name="settings" /></span>
+                    <span className="settings-section-copy">
+                      <strong>انتخاب تولبار سایت</strong>
+                      <span>انتخاب طرح نوار پایین برنامه</span>
+                    </span>
+                    <span className="settings-section-arrow" aria-hidden="true">‹</span>
+                  </button>
+                </nav>
+              </>
             ) : activeSettingsSection === 'انتخاب تم' ? (
               <section className="color-theme-settings" aria-labelledby="color-theme-title">
                 <header className="color-theme-heading">
@@ -9337,7 +10179,57 @@ function App() {
                   ))}
                 </div>
                 <p className="color-theme-status" role="status">
-                  تم انتخاب تم {appColorThemes.find((option) => option.id === colorTheme)?.name}.
+                  تم {appColorThemes.find((option) => option.id === colorTheme)?.name} انتخاب شد.
+                </p>
+              </section>
+            ) : activeSettingsSection === 'انتخاب تولبار سایت' ? (
+              <section className="site-toolbar-settings" aria-labelledby="site-toolbar-title">
+                <header className="color-theme-heading">
+                  <span className="color-theme-heading-icon"><Icon name="settings" /></span>
+                  <div>
+                    <h2 id="site-toolbar-title">طرح نوار ابزار سایت</h2>
+                    <p>یکی از طرح‌ها را انتخاب کن؛ انتخابت روی همین دستگاه ذخیره می‌شود.</p>
+                  </div>
+                </header>
+                <div className="site-toolbar-options" role="group" aria-label="انتخاب طرح تولبار سایت">
+                  <button
+                    className={`site-toolbar-option${siteToolbarStyle === 'basic' ? ' selected' : ''}`}
+                    type="button"
+                    aria-pressed={siteToolbarStyle === 'basic'}
+                    onClick={() => setSiteToolbarStyle('basic')}
+                  >
+                    <span className="site-toolbar-preview basic" aria-hidden="true">
+                      <span><i /><i /><i /><i /><i /></span>
+                    </span>
+                    <span className="site-toolbar-option-copy">
+                      <strong>طرح ساده</strong>
+                      <small>نوار ساده با گزینه‌های ثابت</small>
+                    </span>
+                    {siteToolbarStyle === 'basic' && (
+                      <span className="site-toolbar-selected-badge">انتخاب شده</span>
+                    )}
+                  </button>
+                  <button
+                    className={`site-toolbar-option${siteToolbarStyle === 'floating' ? ' selected' : ''}`}
+                    type="button"
+                    aria-pressed={siteToolbarStyle === 'floating'}
+                    onClick={() => setSiteToolbarStyle('floating')}
+                  >
+                    <span className="site-toolbar-preview floating" aria-hidden="true">
+                      <span><i /><i /><i /><i /><i /></span>
+                      <b />
+                    </span>
+                    <span className="site-toolbar-option-copy">
+                      <strong>طرح گوی متحرک</strong>
+                      <small>گوی متحرک و نوار منحنی</small>
+                    </span>
+                    {siteToolbarStyle === 'floating' && (
+                      <span className="site-toolbar-selected-badge">انتخاب شده</span>
+                    )}
+                  </button>
+                </div>
+                <p className="color-theme-status" role="status">
+                  {siteToolbarStyle === 'basic' ? 'طرح ساده' : 'طرح گوی متحرک'} برای نوار ابزار انتخاب شده است.
                 </p>
               </section>
             ) : activeSettingsSection === 'امنیت' ? (
@@ -11736,18 +12628,20 @@ function App() {
                     ? 'طرف حساب فاکتور برگشت از فروش'
                     : returnPurchaseInvoiceMode
                       ? 'تأمین‌کننده فاکتور برگشت به خرید'
-                      : purchaseInvoiceMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
+                      : purchaseInvoiceMode ? 'طرف حساب فاکتور خرید' : 'طرف حساب فاکتور'}
               >
                 <span className="sales-invoice-party-label">
-                  {purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'طرف حساب'}
+                  {purchaseInvoiceMode ? 'طرف حساب' : purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'طرف حساب'}
                 </span>
                 <div className="sales-invoice-party-control">
                   <label className="sales-invoice-party-search">
                     <input
                       type="search"
                       role="combobox"
-                      aria-label={purchaseInvoicePartyMode
-                        ? 'جست‌وجو و انتخاب تأمین‌کننده'
+                      aria-label={purchaseInvoiceMode
+                        ? 'جست‌وجو و انتخاب طرف حساب'
+                        : purchaseInvoicePartyMode
+                          ? 'جست‌وجو و انتخاب تأمین‌کننده'
                         : returnSalesInvoiceMode
                           ? 'جست‌وجو و انتخاب مشتری فاکتور برگشت'
                           : 'جست‌وجو و انتخاب طرف حساب'}
@@ -11758,8 +12652,10 @@ function App() {
                       aria-expanded={salesInvoicePersonOptionsOpen}
                       aria-controls="sales-invoice-person-options"
                       value={salesInvoicePersonSearch || selectedSalesInvoicePerson?.name || ''}
-                      placeholder={purchaseInvoicePartyMode
-                        ? 'نام، شماره تماس یا کد تأمین‌کننده'
+                      placeholder={purchaseInvoiceMode
+                        ? 'نام، شماره تماس یا کد طرف حساب'
+                        : purchaseInvoicePartyMode
+                          ? 'نام، شماره تماس یا کد تأمین‌کننده'
                         : returnSalesInvoiceMode
                           ? 'نام، شماره تماس یا کد مشتری'
                           : 'نام، شماره تماس یا کد طرف حساب'}
@@ -11779,8 +12675,10 @@ function App() {
                         className="sales-invoice-person-options"
                         id="sales-invoice-person-options"
                         role="listbox"
-                        aria-label={purchaseInvoicePartyMode
-                          ? 'نتایج جست‌وجوی تأمین‌کننده'
+                        aria-label={purchaseInvoiceMode
+                          ? 'نتایج جست‌وجوی طرف حساب'
+                          : purchaseInvoicePartyMode
+                            ? 'نتایج جست‌وجوی تأمین‌کننده'
                           : returnSalesInvoiceMode
                             ? 'نتایج جست‌وجوی مشتری'
                             : 'نتایج جست‌وجوی طرف حساب'}
@@ -11806,8 +12704,10 @@ function App() {
                         ))}
                         {filteredSalesInvoicePeople.length === 0 && (
                           <p>
-                            {purchaseInvoicePartyMode
-                              ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
+                            {purchaseInvoiceMode
+                              ? 'طرف حسابی با این مشخصات پیدا نشد.'
+                              : purchaseInvoicePartyMode
+                                ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
                               : returnSalesInvoiceMode
                                 ? 'مشتری‌ای با این مشخصات پیدا نشد.'
                                 : 'طرف حسابی با این مشخصات پیدا نشد.'}
@@ -11818,8 +12718,10 @@ function App() {
                   </label>
                   <button
                     type="button"
-                    aria-label={purchaseInvoicePartyMode
-                      ? 'نمایش فهرست تأمین‌کنندگان'
+                    aria-label={purchaseInvoiceMode
+                      ? 'نمایش فهرست اشخاص'
+                      : purchaseInvoicePartyMode
+                        ? 'نمایش فهرست تأمین‌کنندگان'
                       : returnSalesInvoiceMode ? 'نمایش فهرست مشتریان' : 'نمایش فهرست اشخاص'}
                     aria-haspopup="dialog"
                     aria-expanded={salesInvoicePersonPickerOpen}
@@ -11935,21 +12837,25 @@ function App() {
                 aria-label="اقلام فاکتور"
               >
                 <div className="sales-invoice-table-scroll">
-                  <table className={salesInvoiceSettings.enableItemDiscount ? '' : 'without-discount'}>
+                  <table className={purchaseInvoiceMode
+                    ? 'purchase-invoice-table'
+                    : salesInvoiceSettings.enableItemDiscount ? '' : 'without-discount'}>
                     <thead>
                       <tr>
                         <th>شرح</th>
                         <th>انبار</th>
                         <th>مقدار</th>
                         <th>فی</th>
-                        {salesInvoiceSettings.enableItemDiscount && <th>تخفیف</th>}
+                        {purchaseInvoiceMode
+                          ? <th>قیمت فروش</th>
+                          : salesInvoiceSettings.enableItemDiscount && <th>تخفیف</th>}
                         <th>جمع</th>
                       </tr>
                     </thead>
                     <tbody>
                       {salesInvoiceLines.length === 0 ? (
                         <tr>
-                          <td colSpan={salesInvoiceSettings.enableItemDiscount ? 6 : 5}>
+                          <td colSpan={purchaseInvoiceMode || salesInvoiceSettings.enableItemDiscount ? 6 : 5}>
                             <div className="sales-invoice-empty-state">
                               <span aria-hidden="true">▤</span>
                               <strong>هنوز کالایی به فاکتور اضافه نشده</strong>
@@ -11960,6 +12866,7 @@ function App() {
                       ) : (
                         salesInvoiceLines.map((line) => {
                           const item = storedInventoryRecords.items.find((inventoryItem) => inventoryItem.id === line.itemId)
+                            ?? line.draftItem
                           if (!item) return null
                           const lineTotal = Math.max(0, (line.unitPrice ?? item.salePrice) * line.quantity - line.discount)
                           return (
@@ -11977,7 +12884,7 @@ function App() {
                                   {salesInvoiceSettings.prefixCategoryName ? `${item.category} · ` : ''}
                                   {line.description || item.name}
                                 </strong>
-                                <small>{item.unit} · {item.kind}</small>
+                                <small>{line.unit ?? item.unit} · {item.kind}</small>
                               </td>
                               <td className="sales-invoice-line-warehouse">
                                 {line.warehouse ?? item.warehouse ?? (
@@ -12024,7 +12931,9 @@ function App() {
                                 </div>
                               </td>
                               <td>{formatPersonBalance(line.unitPrice ?? item.salePrice)}</td>
-                              {salesInvoiceSettings.enableItemDiscount && (
+                              {purchaseInvoiceMode ? (
+                                <td>{formatPersonBalance(line.salePrice ?? item.salePrice)} {line.unit ?? item.unit}</td>
+                              ) : salesInvoiceSettings.enableItemDiscount && (
                                 <td>
                                   <input
                                     aria-label={`تخفیف ${item.name}`}
@@ -12703,7 +13612,7 @@ function App() {
                       <h2 id="sales-invoice-person-picker-title">
                         {returnPurchaseInvoiceMode
                           ? 'تأمین‌کننده فاکتور برگشت به خرید'
-                          : purchaseInvoicePartyMode ? 'تأمین‌کننده فاکتور خرید' : 'طرف حساب فاکتور'}
+                          : purchaseInvoiceMode ? 'طرف حساب فاکتور خرید' : 'طرف حساب فاکتور'}
                       </h2>
                       <small className="sales-invoice-person-picker-count">
                         {formatPersonBalance(filteredSalesInvoicePickerPeople.length)} مورد
@@ -12786,11 +13695,11 @@ function App() {
                       )}
                     </div>
                     <label className="sales-invoice-person-picker-search">
-                      <span>{purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کننده' : 'جست‌وجوی شخص'}</span>
+                      <span>{purchaseInvoiceMode ? 'جست‌وجوی طرف حساب' : purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کننده' : 'جست‌وجوی شخص'}</span>
                       <input
                         type="search"
                         autoFocus
-                        aria-label={purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کنندگان' : 'جست‌وجوی اشخاص'}
+                        aria-label={purchaseInvoiceMode ? 'جست‌وجوی اشخاص' : purchaseInvoicePartyMode ? 'جست‌وجوی تأمین‌کنندگان' : 'جست‌وجوی اشخاص'}
                         value={salesInvoicePersonPickerSearch}
                         onChange={(event) => setSalesInvoicePersonPickerSearch(event.target.value)}
                         placeholder="نام، شماره تماس یا کد"
@@ -12799,7 +13708,7 @@ function App() {
                     <div
                       className="sales-invoice-person-picker-list"
                       role="listbox"
-                      aria-label={purchaseInvoicePartyMode ? 'فهرست تأمین‌کنندگان' : 'فهرست اشخاص'}
+                      aria-label={purchaseInvoiceMode ? 'فهرست اشخاص' : purchaseInvoicePartyMode ? 'فهرست تأمین‌کنندگان' : 'فهرست اشخاص'}
                     >
                       {filteredSalesInvoicePickerPeople.map((person) => (
                         <button
@@ -12828,8 +13737,10 @@ function App() {
                       ))}
                       {filteredSalesInvoicePickerPeople.length === 0 && (
                         <p>
-                          {purchaseInvoicePartyMode
-                            ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
+                          {purchaseInvoiceMode
+                            ? 'طرف حسابی با این مشخصات پیدا نشد.'
+                            : purchaseInvoicePartyMode
+                              ? 'تأمین‌کننده‌ای با این مشخصات پیدا نشد.'
                             : 'شخصی با این مشخصات پیدا نشد.'}
                         </p>
                       )}
@@ -12848,12 +13759,12 @@ function App() {
                         setSalesInvoicePersonPickerOpen(false)
                         setSalesInvoicePersonPickerGroupFormOpen(false)
                         setSalesInvoicePersonPickerGroupError('')
-                        openPersonForm(purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص', groupOverride)
+                        openPersonForm(purchaseInvoiceMode ? 'شخص' : purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص', groupOverride)
                         setActiveTab('اشخاص')
                       }}
                     >
                       <span aria-hidden="true">♙+</span>
-                      افزودن {purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص'}
+                      افزودن {purchaseInvoiceMode ? 'شخص' : purchaseInvoicePartyMode ? 'تأمین‌کننده' : 'شخص'}
                     </button>
                     <button type="button" onClick={() => setSalesInvoicePersonPickerOpen(false)}>بستن</button>
                   </footer>
@@ -13163,10 +14074,13 @@ function App() {
                             onFocus={() => setSalesInvoiceItemOptionsOpen(Boolean(salesInvoiceItemSearch.trim()))}
                             onChange={(event) => {
                               setSalesInvoiceItemSearch(event.target.value)
+                              if (salesInvoiceDraftItem) setSalesInvoiceDraftBarcode('')
                               setSalesInvoiceDraftItem(null)
                               setSalesInvoiceDraftDescription('')
                               setSalesInvoiceDraftQuantity(1)
                               setSalesInvoiceDraftPrice(0)
+                              setSalesInvoiceDraftSalePrice(0)
+                              setSalesInvoiceDraftUnit(storedInventoryUnits.units[0] ?? 'عدد')
                               setSalesInvoiceDraftDiscountPercent(0)
                               setSalesInvoiceDraftDiscountAmount(0)
                               setSalesInvoiceItemOptionsOpen(Boolean(event.target.value.trim()))
@@ -13195,6 +14109,9 @@ function App() {
                                 setSalesInvoiceItemSearch('')
                                 setSalesInvoiceDraftQuantity(1)
                                 setSalesInvoiceDraftPrice(0)
+                                setSalesInvoiceDraftSalePrice(0)
+                                setSalesInvoiceDraftUnit(storedInventoryUnits.units[0] ?? 'عدد')
+                                setSalesInvoiceDraftBarcode('')
                                 setSalesInvoiceDraftDiscountPercent(0)
                                 setSalesInvoiceDraftDiscountAmount(0)
                                 setSalesInvoiceItemOptionsOpen(false)
@@ -13236,6 +14153,18 @@ function App() {
                           {filteredSalesInvoiceItems.length === 0 && (
                             <p className="sales-invoice-picker-empty">موردی با این مشخصات پیدا نشد.</p>
                           )}
+                          {purchaseInvoiceMode && !salesInvoiceDraftItem && salesInvoiceItemSearch.trim() && !salesInvoicePickerItems.some((item) => (
+                            normalizeInventorySearchText(item.name)
+                              === normalizeInventorySearchText(salesInvoiceItemSearch.trim())
+                          )) && (
+                            <button
+                              className="sales-invoice-picker-create-item"
+                              type="button"
+                              onClick={() => startNewPurchaseInvoiceItem(salesInvoiceItemSearch)}
+                            >
+                              افزودن «{salesInvoiceItemSearch.trim()}» به انبار
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -13250,6 +14179,35 @@ function App() {
                           readOnly
                         />
                       </label>
+                      {purchaseInvoiceMode && (
+                        <>
+                          <label className="sales-invoice-form-field">
+                            <span>بارکد:</span>
+                            <div className="sales-invoice-item-barcode-control">
+                              <input
+                                aria-label="بارکد کالا"
+                                value={salesInvoiceDraftBarcode}
+                                onChange={(event) => setSalesInvoiceDraftBarcode(event.target.value)}
+                                placeholder="بارکد کالا"
+                                disabled={!salesInvoiceDraftItem}
+                              />
+                            </div>
+                          </label>
+                          <label className="sales-invoice-form-field">
+                            <span>واحد:</span>
+                            <select
+                              aria-label="واحد کالا"
+                              value={salesInvoiceDraftUnit}
+                              onChange={(event) => setSalesInvoiceDraftUnit(event.target.value)}
+                              disabled={!salesInvoiceDraftItem}
+                            >
+                              {[...new Set([...storedInventoryUnits.units, salesInvoiceDraftUnit])].map((unit) => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </>
+                      )}
                       <label className="sales-invoice-form-field">
                         <span>انبار:</span>
                         <select
@@ -13333,7 +14291,7 @@ function App() {
                       </div>
                     </label>
 
-                    <div className="sales-invoice-item-price-panel">
+                    <div className={`sales-invoice-item-price-panel${purchaseInvoiceMode ? ' purchase' : ''}`}>
                       <label className="sales-invoice-form-field">
                         <span>فی:</span>
                         <div className="sales-invoice-item-number-control">
@@ -13344,14 +14302,42 @@ function App() {
                               const price = parsePersonBalance(event.target.value)
                               if (price !== null) setSalesInvoiceDraftPrice(price)
                             }}
-                            aria-label="قیمت هر واحد"
+                            aria-label={purchaseInvoiceMode ? 'فی خرید' : 'قیمت هر واحد'}
                             disabled={!salesInvoiceDraftItem}
                           />
-                          <small>قیمت هر واحد</small>
+                          {purchaseInvoiceMode ? (
+                            <button
+                              className="sales-invoice-barcode-scan-inline"
+                              type="button"
+                              onClick={openSalesInvoiceBarcodePicker}
+                            >
+                              اسکن بارکد
+                            </button>
+                          ) : (
+                            <small>قیمت هر واحد</small>
+                          )}
                           <em>{returnInvoiceMode ? (activeStore?.currency ?? 'ریال') : 'ریال'}</em>
                         </div>
                       </label>
-                      {salesInvoiceSettings.enableItemDiscount && (
+                      {purchaseInvoiceMode ? (
+                        <label className="sales-invoice-form-field">
+                          <span>قیمت فروش:</span>
+                          <div className="sales-invoice-item-number-control">
+                            <input
+                              inputMode="numeric"
+                              value={formatPersonBalance(salesInvoiceDraftSalePrice)}
+                              onChange={(event) => {
+                                const price = parsePersonBalance(event.target.value)
+                                if (price !== null) setSalesInvoiceDraftSalePrice(price)
+                              }}
+                              aria-label="قیمت فروش"
+                              disabled={!salesInvoiceDraftItem}
+                            />
+                            <em>{salesInvoiceDraftUnit}</em>
+                            <em>ریال</em>
+                          </div>
+                        </label>
+                      ) : salesInvoiceSettings.enableItemDiscount && (
                         <div className="sales-invoice-item-discount-row">
                           <label className="sales-invoice-form-field">
                             <span>تخفیف:</span>
@@ -16403,26 +17389,86 @@ function App() {
         ) : activeTab === 'گزارش‌ها' ? (
           <div className="reports-view">
             <section className="page-intro reports-intro">
-              <span className="intro-eyebrow">داشبورد مالی</span>
-              <h1>گزارش‌ها</h1>
-              <p>گزارش‌های مالی و عملکرد کسب‌وکارت</p>
+              <span className="reports-intro-icon"><Icon name="chart" /></span>
+              <div className="reports-intro-copy">
+                <span className="intro-eyebrow">داشبورد مالی</span>
+                <h1>گزارشات مالی</h1>
+                <p>نمایی روشن از وضعیت مالی و عملکرد کسب‌وکارت</p>
+              </div>
+            </section>
+            <section className="reports-summary" aria-label="خلاصهٔ مالی">
+              <div className="reports-summary-heading">
+                <span className="reports-summary-icon"><Icon name="accounts" /></span>
+                <div>
+                  <h2>موجودی کل حساب‌ها</h2>
+                  <p>جمع موجودی همهٔ حساب‌ها</p>
+                </div>
+                <strong className="reports-summary-total">
+                  {formatPersonBalance(reportAccountsTotal)} <small>ریال</small>
+                </strong>
+              </div>
+              <div className="reports-summary-month">
+                <div className="reports-summary-amount received">
+                  <span><Icon name="receive" /> دریافتی این ماه</span>
+                  <strong>{formatPersonBalance(reportMonthlyTotals.received)} <small>ریال</small></strong>
+                </div>
+                <div className="reports-summary-amount paid">
+                  <span><Icon name="pay" /> پرداختی این ماه</span>
+                  <strong>{formatPersonBalance(reportMonthlyTotals.paid)} <small>ریال</small></strong>
+                </div>
+              </div>
             </section>
             <section className="content-section reports-page">
               <div className="section-heading">
-                <h2 className="section-title">همه گزارش‌ها</h2>
+                <h2 className="section-title">گزارش‌های اصلی</h2>
                 <span className="section-count">{reports.length} گزارش</span>
               </div>
-              <div className="link-grid">
+              <div className="reports-card-grid">
                 {reports.map((item) => (
                   <button
-                    className="list-link report-link"
+                    className="report-card"
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      if (item.label === 'گزارش اشخاص') {
+                        setAccountReportGroup(allAccountReportGroups)
+                        setActiveTab('گزارشات طرف حساب‌ها')
+                      } else if (item.label === 'گزارش حساب‌ها') {
+                        setActiveTab('حساب‌ها')
+                      } else if (item.label === 'گزارش کالا و انبار') {
+                        setActiveTab('کالا و انبار')
+                      } else {
+                        showComingSoon(item.label)
+                      }
+                    }}
+                  >
+                    <span className="report-card-icon"><Icon name={item.icon} /></span>
+                    <span className="report-card-copy">
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                    <span className="report-card-chevron" aria-hidden="true">‹</span>
+                  </button>
+                ))}
+              </div>
+              <div className="section-heading reports-analytics-heading">
+                <h2 className="section-title">گزارش‌های تحلیلی</h2>
+                <span className="section-count">{analyticalReports.length} گزارش</span>
+              </div>
+              <div className="reports-card-grid">
+                {analyticalReports.map((item) => (
+                  <button
+                    className="report-card"
                     key={item.label}
                     type="button"
                     onClick={() => showComingSoon(item.label)}
                   >
-                    <span className="list-link-icon report-icon"><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                    <span className="chevron" aria-hidden="true">‹</span>
+                    <span className="report-card-icon analytical"><Icon name={item.icon} /></span>
+                    <span className="report-card-copy">
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                    <span className="report-card-chevron" aria-hidden="true">‹</span>
                   </button>
                 ))}
               </div>
@@ -16730,36 +17776,59 @@ function App() {
                     type="search"
                     value={peopleSearch}
                     onChange={(event) => setPeopleSearch(event.target.value)}
-                    placeholder="جست‌وجوی نام یا شماره تماس..."
-                    aria-label="جست‌وجو در اشخاص"
+                    placeholder="جست‌وجوی نام یا کد شخص..."
+                    aria-label="جست‌وجو بر اساس نام یا کد شخص"
                   />
                 </label>
               </div>
 
               <div className="people-list">
                 {filteredPeople.map((person) => (
-                    <article className="person-card" key={person.id}>
+                    <article
+                      className="person-card"
+                      key={person.id}
+                      tabIndex={0}
+                      aria-label={`مشخصات ${person.name}`}
+                      onClick={(event) => {
+                        if (suppressPersonActionClick.current) {
+                          suppressPersonActionClick.current = false
+                          event.preventDefault()
+                          return
+                        }
+                        if (event.target instanceof Element && event.target.closest('button')) return
+                        setPersonDetailId(person.id)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        setPersonDetailId(person.id)
+                      }}
+                      onContextMenu={(event) => event.preventDefault()}
+                      onPointerDown={(event) => startPersonActionPress(event, person)}
+                      onPointerMove={movePersonActionPress}
+                      onPointerUp={clearPersonActionPressTimer}
+                      onPointerCancel={clearPersonActionPressTimer}
+                    >
+                      <button
+                        className="person-action-trigger"
+                        type="button"
+                        aria-label={`عملیات ${person.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={personActionMenu?.personId === person.id}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          activatePersonActionMenu(event, person)
+                        }}
+                      >
+                        <span aria-hidden="true">⋮</span>
+                      </button>
                       <span className={`person-avatar ${person.tone}`} aria-hidden="true">
                         {person.name.slice(0, 1)}
                       </span>
                       <span className="person-details">
                         <strong>{person.name}</strong>
-                        {person.phone && <span className="person-contact">{person.phone}</span>}
-                        {person.address && <span className="person-contact">{person.address}</span>}
-                        {person.accountNumber && (
-                          <span className="person-contact">حساب {person.accountNumber}</span>
-                        )}
-                        <span className="person-identity">
-                          <span className="person-role">{person.group || person.role}</span>
-                          <span className="person-code">کد {person.code}</span>
-                        </span>
-                      </span>
-                      <span className="person-balance">
-                        <small>ماندهٔ حساب</small>
-                        <strong className={person.accountStatus === 'بدهکاران' ? 'debit' : person.accountStatus === 'بستانکاران' ? 'credit' : 'zero'}>
-                          {formatPersonBalance(person.balance)}
-                        </strong>
-                        <small>ریال</small>
+                        <span className="person-code">کد {person.code}</span>
                       </span>
                     </article>
                   ))}
@@ -16771,6 +17840,73 @@ function App() {
                   </div>
                 )}
               </div>
+              {personActionMenu && (
+                <div
+                  className="inventory-action-menu person-action-menu"
+                  role="menu"
+                  aria-label={`عملیات شخص ${personActionMenu.name}`}
+                  style={{ left: personActionMenu.x, top: personActionMenu.y }}
+                >
+                  <span className="inventory-action-menu-title">{personActionMenu.name}</span>
+                  <button type="button" role="menuitem" onClick={() => performPersonAction('edit')}>
+                    ویرایش
+                  </button>
+                  <button className="delete" type="button" role="menuitem" onClick={() => performPersonAction('delete')}>
+                    حذف
+                  </button>
+                </div>
+              )}
+              {personDetail && (
+                <div
+                  className="inventory-detail-backdrop"
+                  role="presentation"
+                  onMouseDown={(event) => {
+                    if (event.target === event.currentTarget) setPersonDetailId(null)
+                  }}
+                  onTouchStart={(event) => {
+                    if (event.target === event.currentTarget) setPersonDetailId(null)
+                  }}
+                >
+                  <section
+                    className="inventory-detail-dialog person-detail-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="person-detail-title"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onTouchStart={(event) => event.stopPropagation()}
+                  >
+                    <header className="inventory-detail-header">
+                      <div>
+                        <span>{personDetail.group || personDetail.role}</span>
+                        <h2 id="person-detail-title">{personDetail.name}</h2>
+                      </div>
+                      <button
+                        ref={personDetailCloseButtonRef}
+                        type="button"
+                        aria-label="بستن مشخصات"
+                        onClick={() => setPersonDetailId(null)}
+                      >
+                        ×
+                      </button>
+                    </header>
+                    <dl className="inventory-detail-properties">
+                      <div><dt>کد شخص</dt><dd>{personDetail.code || '—'}</dd></div>
+                      <div><dt>شماره تماس</dt><dd>{personDetail.phone || '—'}</dd></div>
+                      <div><dt>نشانی</dt><dd>{personDetail.address || '—'}</dd></div>
+                      <div><dt>شماره حساب</dt><dd>{personDetail.accountNumber || '—'}</dd></div>
+                      <div><dt>وضعیت حساب</dt><dd>{personDetail.accountStatus}</dd></div>
+                      <div>
+                        <dt>ماندهٔ حساب</dt>
+                        <dd>{formatPersonBalance(personDetail.balance)} ریال</dd>
+                      </div>
+                      <div>
+                        <dt>تعداد تراکنش‌ها</dt>
+                        <dd>{formatPersonBalance(personDetail.transactionCount ?? 0)}</dd>
+                      </div>
+                    </dl>
+                  </section>
+                </div>
+              )}
             </section>
             {!personFormOpen && (
               <button
@@ -16808,7 +17944,9 @@ function App() {
                     <div>
                       <span className="person-modal-eyebrow">دفتر اشخاص</span>
                       <h2 id="person-form-title">
-                        معرفی {personFormRole === 'تأمین‌کننده' ? 'تأمین‌کننده' : 'شخص'} جدید
+                        {editingPersonId
+                          ? `ویرایش ${personFormRole === 'تأمین‌کننده' ? 'تأمین‌کننده' : 'شخص'}`
+                          : `معرفی ${personFormRole === 'تأمین‌کننده' ? 'تأمین‌کننده' : 'شخص'} جدید`}
                       </h2>
                       <p>اطلاعات تماس و وضعیت حساب را ثبت کن.</p>
                     </div>
@@ -17044,7 +18182,7 @@ function App() {
                         </button>
                       ) : (
                         <button className="person-form-save" type="submit">
-                          ثبت شخص <span aria-hidden="true">✓</span>
+                          {editingPersonId ? 'ذخیره تغییرات' : 'ثبت شخص'} <span aria-hidden="true">✓</span>
                         </button>
                       )}
                     </div>
@@ -18446,38 +19584,22 @@ function App() {
 
       {demoEntered && notice && <div className="toast" role="status">{notice}</div>}
 
-      {demoEntered
-        && stores.length > 0
-        && activeTab !== 'فاکتور فروش'
-        && activeTab !== 'فاکتور خرید'
-        && activeTab !== 'تنظیمات'
-        && activeTab !== 'فروشگاه' && (
-        <nav className="bottom-nav" aria-label="ناوبری اصلی">
-          {navigation.map((item) => {
-            const isActive = activeTab === item.label
-              || (['گزارشات طرف حساب‌ها', 'گزارشات'].includes(activeTab) && item.label === 'گزارش‌ها')
-              || (activeTab === 'فروشگاه' && item.label === 'خانه')
-            return (
-              <button
-                className={`nav-item ${item.label === 'اشخاص' ? 'nav-item-people' : ''} ${isActive ? 'active' : ''}`}
-                key={item.label}
-                type="button"
-                aria-current={isActive ? 'page' : undefined}
-                onClick={() => {
-                  setActiveTab(item.label)
-                  if (item.label !== 'خانه' && item.label !== 'گزارش‌ها' && item.label !== 'اشخاص' && item.label !== 'کالا و انبار' && item.label !== 'حساب‌ها') {
-                    showComingSoon(item.label)
-                  }
-                }}
-              >
-                <Icon name={item.icon} className="nav-icon" />
-                <span>{item.label}</span>
-              </button>
-            )
-          })}
-          <span className="home-indicator" aria-hidden="true" />
-        </nav>
-      )}
+      {showBottomNavigation && (siteToolbarStyle === 'basic' ? (
+        <BasicToolbar
+          items={navigation}
+          activeLabel={activeNavigationLabel}
+          onSelect={setActiveTab}
+        />
+      ) : (
+        <MeniscusToolbar
+          items={navigation}
+          activeLabel={activeNavigationLabel}
+          onSelect={setActiveTab}
+          addKind={toolbarAddKind}
+          addLabel={toolbarAddLabel}
+          onAdd={toolbarAddHandler}
+        />
+      ))}
     </div>
   )
 }
