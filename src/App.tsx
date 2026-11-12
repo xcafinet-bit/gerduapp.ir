@@ -316,6 +316,11 @@ function ToolbarAddGlyph({ kind }: { kind: 'people' | 'product' | 'service' | 'p
   )
 }
 
+function detectTouchDevice() {
+  if (/Windows/i.test(navigator.userAgent)) return false
+  return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
+}
+
 function MeniscusToolbar({
   items,
   activeLabel,
@@ -341,7 +346,7 @@ function MeniscusToolbar({
   const animationIdRef = useRef(0)
   const initializedRef = useRef(false)
   const selectedLabelRef = useRef(activeLabel)
-  const [isTouchPointer, setIsTouchPointer] = useState(() => window.matchMedia('(pointer: coarse)').matches)
+  const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice)
   const [beadSettled, setBeadSettled] = useState(true)
   const draggedRef = useRef(false)
   const gestureRef = useRef<{
@@ -354,7 +359,7 @@ function MeniscusToolbar({
 
   useEffect(() => {
     const pointerQuery = window.matchMedia('(pointer: coarse)')
-    const updatePointerType = () => setIsTouchPointer(pointerQuery.matches)
+    const updatePointerType = () => setIsTouchDevice(detectTouchDevice())
     pointerQuery.addEventListener('change', updatePointerType)
     return () => pointerQuery.removeEventListener('change', updatePointerType)
   }, [])
@@ -384,7 +389,7 @@ function MeniscusToolbar({
       const preferredLeft = rightSide + hintWidth <= width - 8
         ? rightSide
         : position - 29 - hintWidth - 8
-      hint.style.left = `${Math.max(8, Math.min(maxHintLeft, preferredLeft))}px`
+      hint.style.left = `${Math.max(8, Math.min(maxHintLeft, preferredLeft - 4))}px`
     }
 
     centersRef.current.forEach((tabCenter, index) => {
@@ -394,7 +399,7 @@ function MeniscusToolbar({
       const proximity = Math.max(0, 1 - Math.abs(tabCenter - position) / 58)
       const lift = proximity * proximity * (3 - 2 * proximity)
       icon.style.transform = `translate3d(0,${-46 * lift}px,0) scale(${1 + lift * 0.04})`
-      icon.style.color = lift > 0.65 ? '#693731' : ''
+      icon.style.color = lift > 0.65 ? 'var(--app-color-light)' : ''
     })
   }, [])
 
@@ -492,7 +497,7 @@ function MeniscusToolbar({
     if (!hint) return
     hintWidthRef.current = hint.offsetWidth
     render(positionRef.current)
-  }, [activeLabel, addKind, isTouchPointer, render])
+  }, [activeLabel, addKind, isTouchDevice, render])
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (!event.isPrimary || event.button !== 0 || event.clientY > event.currentTarget.getBoundingClientRect().top + 126) return
@@ -572,12 +577,13 @@ function MeniscusToolbar({
       <svg className="nav-bar-surface" aria-hidden="true" preserveAspectRatio="none">
         <defs>
           <linearGradient id="nav-surface" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#1b1525" />
-            <stop offset="1" stopColor="#110d1a" />
+            <stop offset="0" stopColor="var(--app-color-navy)" />
+            <stop offset=".65" stopColor="var(--app-color-mid)" />
+            <stop offset="1" stopColor="var(--app-color-deep)" />
           </linearGradient>
           <linearGradient id="nav-rim" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#a39aaf" stopOpacity=".7" />
-            <stop offset="1" stopColor="#60536f" stopOpacity=".17" />
+            <stop offset="0" stopColor="var(--app-color-light)" stopOpacity=".7" />
+            <stop offset="1" stopColor="var(--app-color-accent)" stopOpacity=".3" />
           </linearGradient>
         </defs>
         <path ref={pathRef} className="nav-surface-path" fill="url(#nav-surface)" stroke="url(#nav-rim)" strokeWidth="1.4" />
@@ -604,13 +610,13 @@ function MeniscusToolbar({
       </button>
       {onAdd && addKind && (
         <span className={`nav-add-hint${beadSettled ? '' : ' is-hidden'}`} aria-hidden="true">
-          {isTouchPointer ? 'برای افزودن ضربه بزنید' : 'برای افزودن کلیک کنید'}
+          {isTouchDevice ? 'برای افزودن روی گوی ضربه بزنید' : 'برای افزودن روی گوی کلیک کنید'}
         </span>
       )}
       <div className="nav-tabs">
         {items.map((item, index) => (
           <button
-            className={`nav-item${item.label === 'اشخاص' ? ' nav-item-people' : ''}`}
+            className={`nav-item${item.label === 'اشخاص' ? ' nav-item-people' : ''}${beadSettled && addKind && item.label === activeLabel ? ' nav-item--bead-icon-hidden' : ''}`}
             key={item.label}
             type="button"
             aria-current={visualIndex === index ? 'page' : undefined}
