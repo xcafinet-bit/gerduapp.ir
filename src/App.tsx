@@ -694,12 +694,12 @@ function PeopleToolbarIcon({ name }: { name: 'sort' | 'reports' | 'chart' }) {
 }
 
 const quickLinks = [
-  { icon: 'bell', label: 'پیش‌سفارش', tone: 'green' },
-  { icon: 'note', label: 'یادداشت', tone: 'cyan' },
-  { icon: 'settings', label: 'تنظیمات', tone: 'violet' },
-  { icon: 'shop', label: 'فروشگاه', tone: 'amber' },
-  { icon: 'support', label: 'پشتیبانی', tone: 'blue' },
-]
+  { key: 'preorder', icon: 'bell', label: 'پیش‌سفارش', tone: 'green' },
+  { key: 'notes', icon: 'note', label: 'یادداشت', tone: 'cyan' },
+  { key: 'settings', icon: 'settings', label: 'تنظیمات', tone: 'violet' },
+  { key: 'store', icon: 'shop', label: 'فروشگاه', tone: 'amber' },
+  { key: 'support', icon: 'support', label: 'پشتیبانی', tone: 'blue' },
+] as const
 
 const settingsSections = [
   { icon: 'shop', label: 'مشخصات فروشگاه', description: 'اطلاعات و مشخصات فروشگاه', tone: 'amber' },
@@ -2265,12 +2265,61 @@ function isAccountingBackup(value: unknown): value is AccountingBackup {
 const userTones = ['mint', 'blue', 'amber', 'violet', 'coral'] as const
 type UserTone = (typeof userTones)[number]
 
+const storeUserDocumentPermissionItems = [
+  { key: 'salesInvoice', label: 'فاکتور فروش' },
+  { key: 'purchaseInvoice', label: 'فاکتور خرید' },
+  { key: 'salesReturn', label: 'برگشت از فروش' },
+  { key: 'purchaseReturn', label: 'برگشت به خرید' },
+  { key: 'receive', label: 'دریافت' },
+  { key: 'payment', label: 'پرداخت' },
+  { key: 'expense', label: 'هزینه' },
+  { key: 'income', label: 'درآمد' },
+  { key: 'receiveCheck', label: 'دریافت چک' },
+  { key: 'paymentCheck', label: 'پرداخت چک' },
+  { key: 'spendCheck', label: 'خرج چک' },
+  { key: 'tools', label: 'ابزار (سایر عملیات مالی)' },
+] as const
+
+type StoreUserDocumentPermissionKey = (typeof storeUserDocumentPermissionItems)[number]['key']
+type StoreUserDocumentPermissions = Record<StoreUserDocumentPermissionKey, boolean>
+type StoreUserDashboardPermissionKey = (typeof quickLinks)[number]['key']
+type StoreUserDashboardPermissions = Record<StoreUserDashboardPermissionKey, boolean>
+
+const createStoreUserDocumentPermissions = (enabled: boolean): StoreUserDocumentPermissions => ({
+  salesInvoice: enabled,
+  purchaseInvoice: enabled,
+  salesReturn: enabled,
+  purchaseReturn: enabled,
+  receive: enabled,
+  payment: enabled,
+  expense: enabled,
+  income: enabled,
+  receiveCheck: enabled,
+  paymentCheck: enabled,
+  spendCheck: enabled,
+  tools: enabled,
+})
+
+const createStoreUserDashboardPermissions = (enabled: boolean): StoreUserDashboardPermissions => ({
+  preorder: enabled,
+  notes: enabled,
+  settings: enabled,
+  store: enabled,
+  support: enabled,
+})
+
+const emptyStoreUserDocumentPermissions = createStoreUserDocumentPermissions(false)
+const emptyStoreUserDashboardPermissions = createStoreUserDashboardPermissions(false)
+
 type StoreUser = {
   id: string
   name: string
   phone: string
   tone: UserTone
   active: boolean
+  documentPermissions?: StoreUserDocumentPermissions
+  dashboardPermissions?: StoreUserDashboardPermissions
+  canCreateAllDocuments?: boolean
 }
 
 type StoredStoreUsers = {
@@ -2278,13 +2327,27 @@ type StoredStoreUsers = {
   error: string
 }
 
-type StoreUserFields = Omit<StoreUser, 'id'>
+type StoreUserFields = Omit<StoreUser, 'id' | 'canCreateAllDocuments'>
 
 const emptyStoreUserFields: StoreUserFields = {
   name: '',
   phone: '',
   tone: 'mint',
   active: true,
+  documentPermissions: { ...emptyStoreUserDocumentPermissions },
+  dashboardPermissions: { ...emptyStoreUserDashboardPermissions },
+}
+
+function isStoreUserDocumentPermissions(value: unknown): value is StoreUserDocumentPermissions {
+  if (!value || typeof value !== 'object') return false
+  const permissions = value as Record<string, unknown>
+  return storeUserDocumentPermissionItems.every(({ key }) => typeof permissions[key] === 'boolean')
+}
+
+function isStoreUserDashboardPermissions(value: unknown): value is StoreUserDashboardPermissions {
+  if (!value || typeof value !== 'object') return false
+  const permissions = value as Record<string, unknown>
+  return quickLinks.every(({ key }) => typeof permissions[key] === 'boolean')
 }
 
 function isStoreUser(value: unknown): value is StoreUser {
@@ -2295,6 +2358,9 @@ function isStoreUser(value: unknown): value is StoreUser {
     && typeof user.phone === 'string'
     && userTones.some((tone) => tone === user.tone)
     && typeof user.active === 'boolean'
+    && (user.documentPermissions === undefined || isStoreUserDocumentPermissions(user.documentPermissions))
+    && (user.dashboardPermissions === undefined || isStoreUserDashboardPermissions(user.dashboardPermissions))
+    && (user.canCreateAllDocuments === undefined || typeof user.canCreateAllDocuments === 'boolean')
 }
 
 function readStoredStoreUsers(storeId: number | null): StoredStoreUsers {
@@ -2305,7 +2371,15 @@ function readStoredStoreUsers(storeId: number | null): StoredStoreUsers {
     if (!Array.isArray(parsed) || !parsed.every(isStoreUser)) {
       throw new Error('Invalid store users')
     }
-    return { users: parsed, error: '' }
+    return {
+      users: parsed.map((user) => ({
+        ...user,
+        documentPermissions: user.documentPermissions
+          ?? createStoreUserDocumentPermissions(user.canCreateAllDocuments ?? false),
+        dashboardPermissions: user.dashboardPermissions ?? createStoreUserDashboardPermissions(false),
+      })),
+      error: '',
+    }
   } catch {
     return {
       users: [],
@@ -3353,6 +3427,10 @@ function App() {
   const [storeFields, setStoreFields] = useState<StoreFields>(emptyStoreFields)
   const [storedStoreUsers, setStoredStoreUsers] = useState(() => readStoredStoreUsers(activeStoreId))
   const [storeUserFormOpen, setStoreUserFormOpen] = useState(false)
+  const [storeUserFormTab, setStoreUserFormTab] = useState<'basic' | 'permissions'>('basic')
+  const [storeUserPermissionSectionOpen, setStoreUserPermissionSectionOpen] = useState<'documents' | 'dashboard' | null>(null)
+  const [storeUserPermissionModalTop, setStoreUserPermissionModalTop] = useState<number | null>(null)
+  const storeUserModalRef = useRef<HTMLElement | null>(null)
   const [storeUserFormError, setStoreUserFormError] = useState('')
   const [storeUserFields, setStoreUserFields] = useState<StoreUserFields>(emptyStoreUserFields)
   const [deleteConfirmUserId, setDeleteConfirmUserId] = useState<string | null>(null)
@@ -4398,8 +4476,22 @@ function App() {
 
   const openStoreUserForm = () => {
     setStoreUserFields(emptyStoreUserFields)
+    setStoreUserFormTab('basic')
+    setStoreUserPermissionSectionOpen(null)
+    setStoreUserPermissionModalTop(null)
     setStoreUserFormError('')
     setStoreUserFormOpen(true)
+  }
+
+  const toggleStoreUserPermissionSection = (section: 'documents' | 'dashboard') => {
+    if (storeUserPermissionSectionOpen === section) {
+      setStoreUserPermissionSectionOpen(null)
+      setStoreUserPermissionModalTop(null)
+      return
+    }
+
+    setStoreUserPermissionModalTop(storeUserModalRef.current?.getBoundingClientRect().top ?? null)
+    setStoreUserPermissionSectionOpen(section)
   }
 
   const openAccountForm = () => {
@@ -5197,6 +5289,14 @@ function App() {
       ...storeUserFields,
       name,
       phone,
+      documentPermissions: {
+        ...emptyStoreUserDocumentPermissions,
+        ...storeUserFields.documentPermissions,
+      },
+      dashboardPermissions: {
+        ...emptyStoreUserDashboardPermissions,
+        ...storeUserFields.dashboardPermissions,
+      },
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     }
     if (persistStoreUsers([...storedStoreUsers.users, user])) {
@@ -7786,7 +7886,7 @@ function App() {
             }}
           >
             <span>{value || (allowEmpty ? 'انتخاب واحد دوم' : 'انتخاب واحد')}</span>
-            <span className="dropdown-chevron inventory-unit-chevron" aria-hidden="true">⌄</span>
+            <span className="dropdown-chevron inventory-unit-chevron" aria-hidden="true" />
           </button>
           <button
             className="inventory-unit-add"
@@ -9890,7 +9990,20 @@ function App() {
                       if (event.target === event.currentTarget) setStoreUserFormOpen(false)
                     }}
                   >
-                    <section className="store-modal settings-user-modal" role="dialog" aria-modal="true" aria-labelledby="settings-user-form-title">
+                    <section
+                      ref={storeUserModalRef}
+                      className="store-modal settings-user-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="settings-user-form-title"
+                      style={storeUserPermissionSectionOpen && storeUserPermissionModalTop !== null ? {
+                        position: 'fixed',
+                        top: storeUserPermissionModalTop,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        maxHeight: `calc(100dvh - ${storeUserPermissionModalTop}px - 20px)`,
+                      } : undefined}
+                    >
                       <div className="store-modal-heading">
                         <span className="store-modal-icon settings-user-modal-icon"><Icon name="people" /></span>
                         <div>
@@ -9900,37 +10013,151 @@ function App() {
                         <button className="store-modal-close" type="button" aria-label="بستن فرم" onClick={() => setStoreUserFormOpen(false)}>×</button>
                       </div>
                       <form className="store-form" onSubmit={saveStoreUser}>
-                        <label className="store-field">
-                          <span>نام و نام خانوادگی</span>
-                          <input autoFocus required maxLength={80} value={storeUserFields.name} onChange={(event) => setStoreUserFields({ ...storeUserFields, name: event.target.value })} />
-                        </label>
-                        <label className="store-field">
-                          <span>شماره تلفن</span>
-                          <input required type="tel" inputMode="tel" maxLength={20} dir="ltr" value={storeUserFields.phone} onChange={(event) => setStoreUserFields({ ...storeUserFields, phone: event.target.value })} />
-                        </label>
-                        <fieldset className="settings-user-colors">
-                          <legend>رنگ نماد کاربر</legend>
-                          {userTones.map((tone) => (
-                            <label className={`settings-user-color-option ${tone}`} key={tone}>
-                              <input
-                                type="radio"
-                                name="store-user-tone"
-                                value={tone}
-                                checked={storeUserFields.tone === tone}
-                                onChange={() => setStoreUserFields({ ...storeUserFields, tone })}
-                                aria-label={`رنگ ${tone}`}
-                              />
-                              <span aria-hidden="true" />
+                        <div className="person-form-tabs settings-user-form-tabs" role="tablist" aria-label="بخش‌های فرم کاربر">
+                          <button
+                            id="settings-user-basic-tab"
+                            type="button"
+                            role="tab"
+                            aria-selected={storeUserFormTab === 'basic'}
+                            aria-controls="settings-user-basic-panel"
+                            onClick={() => setStoreUserFormTab('basic')}
+                          >
+                            اطلاعات اصلی
+                          </button>
+                          <button
+                            id="settings-user-permissions-tab"
+                            type="button"
+                            role="tab"
+                            aria-selected={storeUserFormTab === 'permissions'}
+                            aria-controls="settings-user-permissions-panel"
+                            onClick={() => setStoreUserFormTab('permissions')}
+                          >
+                            سطح دسترسی
+                          </button>
+                        </div>
+                        {storeUserFormTab === 'basic' ? (
+                          <div
+                            className="settings-user-basic-panel"
+                            id="settings-user-basic-panel"
+                            role="tabpanel"
+                            aria-labelledby="settings-user-basic-tab"
+                          >
+                            <label className="store-field">
+                              <span>نام و نام خانوادگی</span>
+                              <input autoFocus required maxLength={80} value={storeUserFields.name} onChange={(event) => setStoreUserFields({ ...storeUserFields, name: event.target.value })} />
                             </label>
-                          ))}
-                        </fieldset>
-                        <label className="settings-user-active-field">
-                          <input type="checkbox" checked={storeUserFields.active} onChange={(event) => setStoreUserFields({ ...storeUserFields, active: event.target.checked })} />
-                          <span>کاربر فعال باشد</span>
-                        </label>
-                        <p className="settings-user-permissions-hint">
-                          تنظیم دسترسی‌ها پس از مشخص‌شدن جزئیات در مرحلهٔ بعد اضافه می‌شود.
-                        </p>
+                            <label className="store-field">
+                              <span>شماره تلفن</span>
+                              <input required type="tel" inputMode="tel" maxLength={20} dir="ltr" value={storeUserFields.phone} onChange={(event) => setStoreUserFields({ ...storeUserFields, phone: event.target.value })} />
+                            </label>
+                            <fieldset className="settings-user-colors">
+                              <legend>رنگ نماد کاربر</legend>
+                              {userTones.map((tone) => (
+                                <label className={`settings-user-color-option ${tone}`} key={tone}>
+                                  <input
+                                    type="radio"
+                                    name="store-user-tone"
+                                    value={tone}
+                                    checked={storeUserFields.tone === tone}
+                                    onChange={() => setStoreUserFields({ ...storeUserFields, tone })}
+                                    aria-label={`رنگ ${tone}`}
+                                  />
+                                  <span aria-hidden="true" />
+                                </label>
+                              ))}
+                            </fieldset>
+                            <label className="settings-user-active-field">
+                              <input type="checkbox" checked={storeUserFields.active} onChange={(event) => setStoreUserFields({ ...storeUserFields, active: event.target.checked })} />
+                              <span>کاربر فعال باشد</span>
+                            </label>
+                          </div>
+                        ) : (
+                          <div
+                            className="settings-user-permissions-panel"
+                            id="settings-user-permissions-panel"
+                            role="tabpanel"
+                            aria-labelledby="settings-user-permissions-tab"
+                          >
+                            <section className="settings-user-permission-section" aria-labelledby="settings-user-dashboard-heading">
+                              <h3>
+                                <button
+                                  className="settings-user-permission-section-toggle"
+                                  id="settings-user-dashboard-heading"
+                                  type="button"
+                                  aria-expanded={storeUserPermissionSectionOpen === 'dashboard'}
+                                  aria-controls="settings-user-dashboard-list"
+                                  onClick={() => toggleStoreUserPermissionSection('dashboard')}
+                                >
+                                  <span>داشبورد</span>
+                                  <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
+                                </button>
+                              </h3>
+                              <div className="settings-user-permission-list" id="settings-user-dashboard-list" hidden={storeUserPermissionSectionOpen !== 'dashboard'}>
+                                {quickLinks.map(({ key, label }) => (
+                                  <div className="settings-user-permission-row" key={key}>
+                                    <span id={`settings-user-dashboard-${key}`}>{label}</span>
+                                    <label className="security-switch">
+                                      <input
+                                        type="checkbox"
+                                        role="switch"
+                                        aria-labelledby={`settings-user-dashboard-${key}`}
+                                        checked={storeUserFields.dashboardPermissions?.[key] ?? false}
+                                        onChange={(event) => setStoreUserFields({
+                                          ...storeUserFields,
+                                          dashboardPermissions: {
+                                            ...emptyStoreUserDashboardPermissions,
+                                            ...storeUserFields.dashboardPermissions,
+                                            [key]: event.target.checked,
+                                          },
+                                        })}
+                                      />
+                                      <span className="security-switch-track" aria-hidden="true" />
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                            <section className="settings-user-permission-section" aria-labelledby="settings-user-documents-heading">
+                              <h3>
+                                <button
+                                  className="settings-user-permission-section-toggle"
+                                  id="settings-user-documents-heading"
+                                  type="button"
+                                  aria-expanded={storeUserPermissionSectionOpen === 'documents'}
+                                  aria-controls="settings-user-documents-list"
+                                  onClick={() => toggleStoreUserPermissionSection('documents')}
+                                >
+                                  <span>ثبت سند</span>
+                                  <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
+                                </button>
+                              </h3>
+                              <div className="settings-user-permission-list" id="settings-user-documents-list" hidden={storeUserPermissionSectionOpen !== 'documents'}>
+                                {storeUserDocumentPermissionItems.map(({ key, label }) => (
+                                  <div className="settings-user-permission-row" key={key}>
+                                    <span id={`settings-user-document-${key}`}>{label}</span>
+                                    <label className="security-switch">
+                                      <input
+                                        type="checkbox"
+                                        role="switch"
+                                        aria-labelledby={`settings-user-document-${key}`}
+                                        checked={storeUserFields.documentPermissions?.[key] ?? false}
+                                        onChange={(event) => setStoreUserFields({
+                                          ...storeUserFields,
+                                          documentPermissions: {
+                                            ...emptyStoreUserDocumentPermissions,
+                                            ...storeUserFields.documentPermissions,
+                                            [key]: event.target.checked,
+                                          },
+                                        })}
+                                      />
+                                      <span className="security-switch-track" aria-hidden="true" />
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          </div>
+                        )}
                         {storeUserFormError && <p className="settings-user-form-error" role="alert">{storeUserFormError}</p>}
                         <div className="store-form-actions">
                           <button className="store-cancel-button" type="button" onClick={() => setStoreUserFormOpen(false)}>انصراف</button>
@@ -10519,7 +10746,7 @@ function App() {
                       onClick={() => setAccountReportGroupPickerOpen(!accountReportGroupPickerOpen)}
                     >
                       <span>{accountReportGroup}</span>
-                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
+                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true" />
                     </button>
                     {accountReportGroupPickerOpen && (
                       <div
@@ -10671,7 +10898,7 @@ function App() {
                       onClick={() => setAccountReportGroupPickerOpen(!accountReportGroupPickerOpen)}
                     >
                       <span>{accountReportGroup}</span>
-                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
+                      <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true" />
                     </button>
                     {accountReportGroupPickerOpen && (
                       <div
@@ -11891,6 +12118,7 @@ function App() {
                             className="sales-invoice-receipt-date"
                             type="button"
                             aria-label="انتخاب تاریخ دریافت"
+                            aria-expanded={salesInvoiceReceiptDatePickerOpen}
                             onClick={openSalesInvoiceReceiptDatePicker}
                           >
                             <span aria-hidden="true">▦</span>
@@ -11905,12 +12133,13 @@ function App() {
                                 salesInvoiceReceiptFields.calendar,
                               )}</strong>
                             </span>
-                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true" />
                           </button>
                           <button
                             className="sales-invoice-receipt-time"
                             type="button"
                             aria-label="انتخاب ساعت دریافت"
+                            aria-expanded={salesInvoiceReceiptTimePickerOpen}
                             onClick={openSalesInvoiceReceiptTimePicker}
                           >
                             <span aria-hidden="true">◷</span>
@@ -11921,7 +12150,7 @@ function App() {
                                   .replace(/\d/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)))}
                               </strong>
                             </span>
-                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                            <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true" />
                           </button>
                         </div>
                         <div className="sales-invoice-receipt-tool-group secondary">
@@ -14041,7 +14270,7 @@ function App() {
                 }}
               >
                 <section
-                  className="sales-invoice-picker"
+                  className={`sales-invoice-picker${returnPurchaseInvoiceMode ? '' : ' warehouse-arrow-shift'}`}
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="sales-invoice-picker-title"
@@ -14055,7 +14284,9 @@ function App() {
                             ? 'ثبت قلم فاکتور برگشت به خرید'
                             : purchaseInvoiceMode ? 'ثبت قلم فاکتور خرید' : 'ثبت قلم فاکتور فروش'}
                       </span>
-                      <h2 id="sales-invoice-picker-title">افزودن کالا یا خدمات</h2>
+                      <h2 id="sales-invoice-picker-title">
+                        {purchaseInvoiceMode ? 'افزودن کالا یا محصول' : 'افزودن کالا یا خدمات'}
+                      </h2>
                     </div>
                     <button
                       type="button"
@@ -14071,13 +14302,15 @@ function App() {
                   <div className="sales-invoice-item-form">
                     <div className="sales-invoice-item-search-row">
                       <label className="sales-invoice-form-field">
-                        <span>نام کالا یا خدمات:</span>
+                        <span>{purchaseInvoiceMode ? 'نام کالا یا محصول:' : 'نام کالا یا خدمات:'}</span>
                         <div className="sales-invoice-item-search-control">
                           <input
                             autoFocus={salesInvoiceBarcodeMode}
                             aria-label={salesInvoiceBarcodeMode
-                              ? 'اسکن یا جست‌وجوی بارکد، نام یا کد کالا و خدمات'
-                              : 'نام کالا یا خدمات'}
+                              ? purchaseInvoiceMode
+                                ? 'اسکن یا جست‌وجوی بارکد، نام یا کد کالا یا محصول'
+                                : 'اسکن یا جست‌وجوی بارکد، نام یا کد کالا و خدمات'
+                              : purchaseInvoiceMode ? 'نام کالا یا محصول' : 'نام کالا یا خدمات'}
                             value={salesInvoiceItemSearch}
                             onFocus={() => setSalesInvoiceItemOptionsOpen(Boolean(salesInvoiceItemSearch.trim()))}
                             onChange={(event) => {
@@ -14104,8 +14337,12 @@ function App() {
                               }
                             }}
                             placeholder={salesInvoiceBarcodeMode
-                              ? 'نام، کد یا بارکد کالا و خدمات را وارد یا اسکن کنید'
-                              : 'نام یا کد کالا یا خدمات را جست‌وجو کنید'}
+                              ? purchaseInvoiceMode
+                                ? 'نام، کد یا بارکد کالا یا محصول را وارد یا اسکن کنید'
+                                : 'نام، کد یا بارکد کالا و خدمات را وارد یا اسکن کنید'
+                              : purchaseInvoiceMode
+                                ? 'نام یا کد کالا یا محصول را جست‌وجو کنید'
+                                : 'نام یا کد کالا یا خدمات را جست‌وجو کنید'}
                           />
                           <button
                             type="button"
@@ -14981,7 +15218,7 @@ function App() {
                                   : '▤'}
                               </span>
                               <span>{accountFormFields.bankName || 'بانک را انتخاب کنید'}</span>
-                              <span className="dropdown-chevron account-bank-chevron" aria-hidden="true">⌄</span>
+                              <span className="dropdown-chevron account-bank-chevron" aria-hidden="true" />
                             </button>
                             {accountBankPickerOpen && (
                               <div className="account-bank-menu" id="account-bank-options">
@@ -16014,9 +16251,7 @@ function App() {
                                   : 'برای جست‌وجو و انتخاب کالا بزنید'}
                               </small>
                             </span>
-                            <span className="dropdown-chevron inventory-transfer-product-chevron" aria-hidden="true">
-                              {inventoryTransferProductPickerOpen ? '⌃' : '⌄'}
-                            </span>
+                            <span className="dropdown-chevron inventory-transfer-product-chevron" aria-hidden="true" />
                           </button>
                           {inventoryTransferProductPickerOpen && (
                             <div className="inventory-transfer-product-picker-panel" id="inventory-transfer-product-picker-panel">
@@ -16157,7 +16392,7 @@ function App() {
                   >
                     <Icon name="shop" />
                     <span>{activeWarehouse}</span>
-                    <span className="dropdown-chevron inventory-warehouses-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron inventory-warehouses-chevron" aria-hidden="true" />
                   </button>
                   <button
                     className="inventory-warehouse-add"
@@ -18028,7 +18263,7 @@ function App() {
                                 <span className={personFormFields.group ? '' : 'placeholder'}>
                                   {personFormFields.group || (peopleGroupState.groups.length > 0 ? 'انتخاب گروه' : 'بدون گروه')}
                                 </span>
-                                <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true">⌄</span>
+                                <span className="dropdown-chevron person-group-picker-chevron" aria-hidden="true" />
                               </button>
                               {personGroupPickerOpen && (
                                 <div
@@ -18428,16 +18663,16 @@ function App() {
             {quickLinks.map((item) => (
               <button
                 className="shortcut"
-                key={item.label}
+                key={item.key}
                 type="button"
                 onClick={() => (
-                  item.label === 'پشتیبانی'
+                  item.key === 'support'
                     ? (setSupportFaqOpen(false), setSupportOpen(true))
-                    : item.label === 'فروشگاه'
+                    : item.key === 'store'
                       ? setActiveTab('فروشگاه')
-                      : item.label === 'تنظیمات'
+                      : item.key === 'settings'
                         ? (setActiveSettingsSection(''), setActiveTab('تنظیمات'))
-                      : showComingSoon(item.label)
+                        : showComingSoon(item.label)
                 )}
               >
                 <span className={`shortcut-icon ${item.tone}`}>
@@ -18718,6 +18953,7 @@ function App() {
                     className="sales-invoice-receipt-date"
                     type="button"
                     aria-label={`انتخاب تاریخ ${moneyDocumentKind}`}
+                    aria-expanded={moneyDocumentDatePickerOpen}
                     onClick={() => openMoneyDocumentDatePicker()}
                   >
                     <span aria-hidden="true">▦</span>
@@ -18732,12 +18968,13 @@ function App() {
                         moneyDocumentCalendar,
                       )}</strong>
                     </span>
-                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true" />
                   </button>
                   <button
                     className="sales-invoice-receipt-time"
                     type="button"
                     aria-label={`انتخاب ساعت ${moneyDocumentKind}`}
+                    aria-expanded={moneyDocumentTimePickerOpen}
                     onClick={openMoneyDocumentTimePicker}
                   >
                     <span aria-hidden="true">◷</span>
@@ -18747,7 +18984,7 @@ function App() {
                         String.fromCharCode(0x06f0 + Number(digit))
                       ))}</strong>
                     </span>
-                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true">⌄</span>
+                    <span className="dropdown-chevron sales-invoice-receipt-control-chevron" aria-hidden="true" />
                   </button>
                 </div>
                 <div className="sales-invoice-receipt-tool-group secondary">

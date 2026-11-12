@@ -5645,6 +5645,7 @@
 }
 
 .person-group-picker-trigger {
+  position: relative;
   width: 100%;
   min-height: 43px;
   display: flex;
@@ -5652,6 +5653,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 9px 11px;
+  padding-left: 39px;
   color: var(--app-color-ink);
   background: #f9fbfa;
   border: 1px solid #d9e3e1;
@@ -5683,16 +5685,14 @@
   white-space: nowrap;
 }
 
-.person-group-picker-chevron {
+.person-group-picker-trigger .person-group-picker-chevron {
+  position: absolute;
+  top: calc(50% - 7px);
+  left: 8px;
   flex: 0 0 auto;
+  margin: 0;
   color: #829699;
-  font-size: 17px;
-  line-height: 1;
-  transition: transform 150ms ease;
-}
-
-.person-group-picker-trigger[aria-expanded='true'] .person-group-picker-chevron {
-  transform: rotate(180deg);
+  transform: translateY(-50%);
 }
 
 .person-group-picker-options {
@@ -5934,7 +5934,7 @@
   border: 1px solid var(--app-color-border, #dce8e2);
   border-bottom: 0;
   border-radius: 18px 18px 0 0;
-  box-shadow: 0 -5px 20px #173b5014;
+  box-shadow: 0 -5px 20px rgba(var(--app-color-accent-rgb), .12);
 }
 
 .basic-nav-item {
@@ -5945,12 +5945,13 @@
   justify-content: center;
   gap: 3px;
   padding: 4px 2px;
-  color: #82938f;
+  color: color-mix(in srgb, var(--app-color-ink) 70%, var(--app-color-surface));
   background: transparent;
   border: 0;
   border-radius: 12px;
   font: inherit;
   cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
 }
 
 .basic-nav-item .nav-icon {
@@ -5974,6 +5975,7 @@
 .basic-nav-item:focus-visible,
 .basic-nav-item[aria-current='page'] {
   color: var(--app-color-accent);
+  background: var(--app-color-soft);
 }
 
 .basic-nav-item:focus-visible {
@@ -8445,8 +8447,24 @@ button:focus-visible {
   display: inline-grid;
   place-items: center;
   margin-inline-end: 8px;
-  line-height: 1;
+  font-size: 0;
+  line-height: 0;
   text-align: center;
+}
+
+.dropdown-chevron::before {
+  position: relative;
+  top: -2px;
+  width: 7px;
+  height: 7px;
+  content: '';
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+button[aria-expanded='true'] .dropdown-chevron::before {
+  transform: rotate(225deg);
 }
 
 .inventory-warehouses-button,
@@ -8499,7 +8517,6 @@ button:focus-visible {
   align-self: center;
   margin: 0;
   color: var(--app-color-accent);
-  font-size: 15px;
   transform: translateY(-5px);
 }
 
@@ -9362,14 +9379,8 @@ button:focus-visible {
   position: absolute;
   top: 50%;
   left: 7px;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
   margin: 0;
   color: var(--app-color-muted, var(--app-color-ink));
-  font-size: 15px;
-  line-height: 1;
   transform: translateY(calc(-50% - 3px));
 }
 
@@ -11446,8 +11457,6 @@ button:focus-visible {
   left: -14px;
   flex: 0 0 auto;
   color: #76908a;
-  font-size: 16px;
-  line-height: 1;
 }
 
 .inventory-unit-add {
@@ -12676,9 +12685,6 @@ button:focus-visible {
 .sales-invoice-receipt-control-chevron {
   flex: 0 0 auto;
   color: var(--app-color-muted, #71847f);
-  font-size: 14px;
-  font-weight: 800;
-  font-weight: 800;
 }
 
 .sales-invoice-receipt-date:hover,
@@ -16294,6 +16300,19 @@ button:focus-visible {
   font-size: 10px;
 }
 
+.warehouse-arrow-shift .sales-invoice-item-identification select[aria-label='انتخاب انبار کالا'] {
+  appearance: none;
+  padding-left: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23526d6b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 13px center;
+  background-size: 10px 6px;
+}
+
+.app-frame[data-theme='dark'] .warehouse-arrow-shift .sales-invoice-item-identification select[aria-label='انتخاب انبار کالا'] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23dce8ea' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
 .sales-invoice-item-barcode-control {
   min-width: 0;
   display: flex;
@@ -19571,6 +19590,10 @@ button:focus-visible {
   background: var(--app-color-soft);
 }
 
+.settings-user-modal {
+  scrollbar-gutter: stable;
+}
+
 .settings-user-modal-icon .icon-art {
   width: 36px;
   height: 36px;
@@ -19640,11 +19663,93 @@ button:focus-visible {
   accent-color: var(--app-color-accent);
 }
 
-.settings-user-permissions-hint {
-  margin: -2px 0 0;
-  color: #82938f;
-  font-size: 9px;
-  line-height: 1.8;
+.settings-user-form-tabs {
+  margin-bottom: 0;
+}
+
+.settings-user-basic-panel {
+  display: grid;
+  gap: 11px;
+}
+
+.settings-user-permission-section {
+  display: grid;
+  gap: 9px;
+}
+
+.settings-user-permission-section h3 {
+  margin: 0;
+  color: var(--app-color-ink);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.settings-user-permission-section-toggle {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 11px;
+  color: inherit;
+  background: #f0f7f3;
+  border: 1px solid #e1ece6;
+  border-radius: 11px;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.settings-user-permission-chevron {
+  margin: 0;
+}
+
+.settings-user-permission-list {
+  display: grid;
+  gap: 7px;
+}
+
+.settings-user-permission-list[hidden] {
+  display: none;
+}
+
+.settings-user-permission-row {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #fbfcfb;
+  border: 1px solid #e5ece8;
+  border-radius: 12px;
+}
+
+.settings-user-permission-row > span {
+  min-width: 0;
+  color: var(--app-color-ink);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.settings-user-permission-row .security-switch {
+  flex: 0 0 46px;
+}
+
+.app-frame[data-theme='dark'] .settings-user-permission-row {
+  background: var(--app-color-surface);
+  border-color: var(--app-color-dark-border);
+}
+
+.app-frame[data-theme='dark'] .settings-user-permission-section-toggle {
+  color: #dce8e7;
+  background: var(--app-color-surface-raised);
+  border-color: var(--app-color-dark-border);
+}
+
+.app-frame[data-theme='dark'] .settings-user-permission-row > span {
+  color: #dce8e7;
 }
 
 .app-frame[data-theme='dark'] .settings-users-heading h2,
@@ -19656,8 +19761,7 @@ button:focus-visible {
 .app-frame[data-theme='dark'] .settings-users-heading p,
 .app-frame[data-theme='dark'] .settings-user-details > span,
 .app-frame[data-theme='dark'] .settings-users-empty > p,
-.app-frame[data-theme='dark'] .settings-users-note,
-.app-frame[data-theme='dark'] .settings-user-permissions-hint {
+.app-frame[data-theme='dark'] .settings-users-note {
   color: #9aadb2;
 }
 
@@ -20969,6 +21073,29 @@ button:focus-visible {
     linear-gradient(115deg, var(--app-color-navy), var(--app-color-mid) 65%, var(--app-color-deep));
 }
 
+.app-frame[data-color-theme] .basic-bottom-nav {
+  color: #fff;
+  background:
+    radial-gradient(ellipse at 2% 110%, rgba(var(--app-color-accent-rgb), .35), transparent 55%),
+    linear-gradient(115deg, var(--app-color-navy), var(--app-color-mid) 65%, var(--app-color-deep));
+  border-color: rgba(255, 255, 255, .2);
+  box-shadow: 0 -7px 22px rgba(var(--app-color-accent-rgb), .2);
+}
+
+.app-frame[data-color-theme] .basic-nav-item {
+  color: #ffffffb8;
+}
+
+.app-frame[data-color-theme] .basic-nav-item:hover,
+.app-frame[data-color-theme] .basic-nav-item:focus-visible,
+.app-frame[data-color-theme] .basic-nav-item[aria-current='page'] {
+  color: #fff;
+}
+
+.app-frame[data-color-theme] .basic-nav-item[aria-current='page'] {
+  background: #ffffff24;
+}
+
 .app-frame[data-color-theme] :is(button, input, select, textarea):focus-visible {
   outline-color: var(--app-color-accent);
 }
@@ -21030,11 +21157,6 @@ button:focus-visible {
 
 .app-frame[data-theme='dark'] .site-toolbar-option-copy small {
   color: #9aadb2;
-}
-
-.app-frame[data-theme='dark'] .basic-bottom-nav {
-  background: #15242b;
-  border-color: #293b43;
 }
 
 .accounts-page {
@@ -22363,7 +22485,6 @@ button:focus-visible {
 
 .account-bank-chevron {
   color: var(--app-color-accent);
-  font-size: 16px;
 }
 
 .account-bank-menu {
