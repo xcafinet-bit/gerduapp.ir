@@ -620,7 +620,9 @@ function MeniscusToolbar({
             key={item.label}
             type="button"
             aria-current={visualIndex === index ? 'page' : undefined}
-            onClick={() => {
+            onClick={(event) => {
+              const toolbarTop = toolbarRef.current?.getBoundingClientRect().top
+              if (event.detail !== 0 && toolbarTop !== undefined && event.clientY < toolbarTop + 39) return
               if (draggedRef.current) {
                 draggedRef.current = false
                 return
