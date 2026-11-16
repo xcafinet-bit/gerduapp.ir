@@ -3557,6 +3557,7 @@ function App() {
   const suppressInventoryActionClick = useRef(false)
   const inventoryDetailCloseButtonRef = useRef<HTMLButtonElement>(null)
   const [notice, setNotice] = useState('')
+  const [legacyStoreNoticeOpen, setLegacyStoreNoticeOpen] = useState(false)
   const [authNotice, setAuthNotice] = useState('')
   const backNavigationHandlerRef = useRef<() => boolean>(() => false)
   const lastBackPressRef = useRef(0)
@@ -8631,9 +8632,10 @@ function App() {
     setActiveSettingsSection('')
     setActiveTab(nextStoreState.stores.length === 0 ? 'فروشگاه' : 'خانه')
     setAuthNotice('')
-    setNotice(claimedLegacyStores
-      ? 'فروشگاه‌های قبلی این دستگاه به این شمارهٔ محلی اختصاص داده شدند.'
-      : existingAccount ? '' : 'حساب محلی ایجاد شد؛ شمارهٔ همراه تأیید پیامکی نشده است.')
+    setLegacyStoreNoticeOpen(claimedLegacyStores)
+    setNotice(!claimedLegacyStores && !existingAccount
+      ? 'حساب محلی ایجاد شد؛ شمارهٔ همراه تأیید پیامکی نشده است.'
+      : '')
   }
 
   const openStoreForm = (store?: Store) => {
@@ -22823,6 +22825,34 @@ function App() {
       )}
 
       {demoEntered && notice && <div className="toast" role="status">{notice}</div>}
+
+      {demoEntered && legacyStoreNoticeOpen && (
+        <div
+          className="legacy-store-notice-backdrop"
+          onClick={() => setLegacyStoreNoticeOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              setLegacyStoreNoticeOpen(false)
+            }
+          }}
+        >
+          <section
+            className="legacy-store-notice"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="legacy-store-notice-title"
+            aria-describedby="legacy-store-notice-message"
+          >
+            <span className="legacy-store-notice-icon" aria-hidden="true">✓</span>
+            <h2 id="legacy-store-notice-title">انتقال فروشگاه‌های قبلی</h2>
+            <p id="legacy-store-notice-message">
+              فروشگاه‌های قبلی این دستگاه به این شمارهٔ محلی اختصاص داده شدند.
+            </p>
+            <button type="button" autoFocus>متوجه شدم</button>
+          </section>
+        </div>
+      )}
 
       {showBottomNavigation && (siteToolbarStyle === 'basic' ? (
         <BasicToolbar

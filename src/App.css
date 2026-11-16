@@ -8079,6 +8079,72 @@
   font-size: 13px;
 }
 
+.legacy-store-notice-backdrop {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+  background: rgba(7, 22, 28, .5);
+  backdrop-filter: blur(4px);
+}
+
+.legacy-store-notice {
+  width: min(100%, 380px);
+  padding: 22px 20px 18px;
+  color: var(--app-color-ink);
+  background:
+    radial-gradient(ellipse at 50% 0, var(--app-color-soft), transparent 58%),
+    var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(var(--app-color-accent-rgb), .2);
+  text-align: center;
+}
+
+.legacy-store-notice-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  color: var(--app-color-accent);
+  background: var(--app-color-soft);
+  border: 1px solid var(--app-color-border);
+  border-radius: 16px;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.legacy-store-notice h2 {
+  margin: 0;
+  color: var(--app-color-ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.legacy-store-notice p {
+  margin: 10px 0 18px;
+  color: var(--app-color-ink);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.legacy-store-notice button {
+  min-width: 130px;
+  min-height: 42px;
+  padding: 0 18px;
+  color: #fff;
+  background: linear-gradient(110deg, var(--app-color-accent), var(--app-color-deep));
+  border: 0;
+  border-radius: 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 button:focus-visible {
   outline: 3px solid #e6b957;
   outline-offset: 2px;
