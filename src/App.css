@@ -41,6 +41,11 @@
   box-shadow: 0 9px 22px #153d4c22;
 }
 
+/* Temporary test override; the header markup and its original styles remain intact. */
+.app-frame > .topbar {
+  display: none;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -22937,6 +22942,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 .accounts-hero {
   position: relative;
   overflow: hidden;
+  margin-inline: -40px;
   padding: 22px;
   color: #fff;
   background:
@@ -22944,8 +22950,15 @@ button[aria-expanded='true'] .dropdown-chevron::before {
     radial-gradient(ellipse at 5% 110%, rgba(var(--app-color-accent-rgb), .42), transparent 55%),
     linear-gradient(120deg, var(--app-color-navy), var(--app-color-mid) 62%, var(--app-color-deep));
   border: 1px solid rgba(var(--app-color-accent-rgb), .25);
-  border-radius: 24px;
+  border-radius: 0 0 24px 24px;
   box-shadow: 0 12px 28px rgba(var(--app-color-accent-rgb), .12);
+}
+
+@media (max-width: 760px) {
+  .accounts-hero {
+    margin-top: -14px;
+    padding-top: calc(22px + env(safe-area-inset-top));
+  }
 }
 
 .accounts-hero-top {
@@ -22993,6 +23006,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-inline: -20px;
   margin-top: 12px;
   padding: 11px 14px;
   color: var(--app-color-ink);
@@ -23024,6 +23038,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  margin-inline: -20px;
   margin-top: 12px;
   padding: 5px;
   background: var(--app-color-surface-raised);
@@ -24717,8 +24732,15 @@ button[aria-expanded='true'] .dropdown-chevron::before {
   }
 
   .accounts-hero {
-    padding: 18px;
-    border-radius: 21px;
+    margin-inline: -30px;
+    margin-top: -13px;
+    padding: calc(18px + env(safe-area-inset-top)) 18px 18px;
+    border-radius: 0 0 21px 21px;
+  }
+
+  .accounts-total,
+  .accounts-category-tabs {
+    margin-inline: -14px;
   }
 
   .accounts-hero h1 {

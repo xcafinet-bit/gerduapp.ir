@@ -15576,11 +15576,17 @@ function App() {
                                 )) === warehouse
                               ))
                               if (!warehouseItem) {
-                                setNotice(`نسخهٔ «${salesInvoiceDraftItem.name}» در «${warehouse}» پیدا نشد.`)
-                                window.setTimeout(() => setNotice(''), 2600)
-                                return
+                                const isUnsavedPurchaseItem = purchaseInvoiceMode
+                                  && !storedInventoryRecords.items.some((item) => item.id === salesInvoiceDraftItem.id)
+                                if (!isUnsavedPurchaseItem) {
+                                  setNotice(`نسخهٔ «${salesInvoiceDraftItem.name}» در «${warehouse}» پیدا نشد.`)
+                                  window.setTimeout(() => setNotice(''), 2600)
+                                  return
+                                }
+                                setSalesInvoiceDraftItem({ ...salesInvoiceDraftItem, warehouse })
+                              } else {
+                                setSalesInvoiceDraftItem(warehouseItem)
                               }
-                              setSalesInvoiceDraftItem(warehouseItem)
                             }
                             setSalesInvoiceDraftWarehouse(warehouse)
                           }}
