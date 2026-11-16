@@ -640,7 +640,11 @@ function MeniscusToolbar({
         {onAdd && addKind && beadSettled && <ToolbarAddGlyph kind={addKind} />}
       </button>
       {onAdd && addKind && (
-        <span className={`nav-add-hint${beadSettled ? '' : ' is-hidden'}`} aria-hidden="true">
+        <span
+          key={`${activeLabel}-${addKind}`}
+          className={`nav-add-hint${beadSettled ? '' : ' is-hidden'}`}
+          aria-hidden="true"
+        >
           {isTouchDevice ? 'برای افزودن روی گوی ضربه بزنید' : 'برای افزودن روی گوی کلیک کنید'}
         </span>
       )}
@@ -913,6 +917,7 @@ const emptyStoreFields: StoreFields = {
 }
 
 const STORE_STORAGE_KEY = 'trazino-store-workspace-v1'
+const LOCAL_PHONE_ACCOUNTS_STORAGE_KEY = 'gerdoo-local-phone-accounts-v1'
 
 function isStore(value: unknown): value is Store {
   if (!value || typeof value !== 'object') return false
@@ -925,9 +930,56 @@ function isStore(value: unknown): value is Store {
     && typeof store.currency === 'string'
 }
 
-function readStoredStoreState(): StoredStoreState {
+function isIranianMobileNumber(value: string) {
+  return /^09\d{9}$/.test(value)
+}
+
+function getPhoneStoreStateStorageKey(phone: string) {
+  return `${STORE_STORAGE_KEY}:phone:${phone}`
+}
+
+function readLocalPhoneAccounts() {
   try {
-    const raw = localStorage.getItem(STORE_STORAGE_KEY)
+    const raw = localStorage.getItem(LOCAL_PHONE_ACCOUNTS_STORAGE_KEY)
+    if (!raw) return { phones: [] as string[], error: '' }
+
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') throw new Error('Invalid local phone accounts')
+    const saved = parsed as Record<string, unknown>
+    const phones = saved.phones
+    if (
+      saved.format !== 'gerdoo-local-phone-accounts'
+      || saved.version !== 1
+      || !Array.isArray(phones)
+      || !phones.every(
+        (phone) => typeof phone === 'string' && isIranianMobileNumber(phone),
+      )
+      || new Set(phones).size !== phones.length
+    ) {
+      throw new Error('Invalid local phone accounts')
+    }
+
+    return { phones: phones as string[], error: '' }
+  } catch {
+    return {
+      phones: [] as string[],
+      error: 'حساب‌های محلی قابل خواندن نیستند؛ برای جلوگیری از دسترسی اشتباه، ورود متوقف شد.',
+    }
+  }
+}
+
+function serializeStoreState(state: StoredStoreState) {
+  return JSON.stringify({
+    format: 'trazino-store-workspace',
+    version: 1,
+    stores: state.stores,
+    activeStoreId: state.activeStoreId,
+  })
+}
+
+function readStoredStoreState(storageKey = STORE_STORAGE_KEY): StoredStoreState {
+  try {
+    const raw = localStorage.getItem(storageKey)
     if (!raw) return { stores: [], activeStoreId: null, error: '' }
 
     const parsed: unknown = JSON.parse(raw)
@@ -3033,6 +3085,14 @@ function normalizeAccountDigits(value: string) {
     .replace(/\D/g, '')
 }
 
+function normalizeIranianMobileNumber(value: string) {
+  let digits = normalizeAccountDigits(value)
+  if (digits.startsWith('0098')) digits = digits.slice(4)
+  else if (digits.startsWith('98')) digits = digits.slice(2)
+  if (digits.startsWith('0')) digits = digits.slice(1)
+  return /^9\d{9}$/.test(digits) ? `0${digits}` : null
+}
+
 function normalizeAccountIban(value: string) {
   return value
     .replace(/[۰-۹٠-٩]/g, (digit) => {
@@ -3641,9 +3701,9 @@ function App() {
   } | null>(null)
   const [serverComparisonNotice, setServerComparisonNotice] = useState('')
   const backupImportInputRef = useRef<HTMLInputElement>(null)
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [demoEntered, setDemoEntered] = useState(false)
-  const [authFields, setAuthFields] = useState({ name: '', phone: '', password: '' })
+  const [activeAccountPhone, setActiveAccountPhone] = useState<string | null>(null)
+  const [authPhone, setAuthPhone] = useState('')
   const iranToday = new Date(`${getIranDateValue(new Date())}T00:00:00Z`)
   const subscriptionExpiryDay = Date.UTC(
     DEMO_SUBSCRIPTION_EXPIRY.getUTCFullYear(),
@@ -5427,21 +5487,12 @@ function App() {
     try {
       if (next.activeStoreId !== storeState.activeStoreId) {
         if (next.activeStoreId !== null) claimLegacyStoreData(next.activeStoreId)
-        localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify({
-          format: 'trazino-store-workspace',
-          version: 1,
-          stores: next.stores,
-          activeStoreId: next.activeStoreId,
-        }))
-        loadStoreWorkspace(next.activeStoreId)
-      } else {
-        localStorage.setItem(STORE_STORAGE_KEY, JSON.stringify({
-          format: 'trazino-store-workspace',
-          version: 1,
-          stores: next.stores,
-          activeStoreId: next.activeStoreId,
-        }))
       }
+      const storageKey = activeAccountPhone
+        ? getPhoneStoreStateStorageKey(activeAccountPhone)
+        : STORE_STORAGE_KEY
+      localStorage.setItem(storageKey, serializeStoreState(next))
+      if (next.activeStoreId !== storeState.activeStoreId) loadStoreWorkspace(next.activeStoreId)
       setStoreState(next)
       return true
     } catch {
@@ -6513,11 +6564,13 @@ function App() {
       : backup.activeStoreId ?? (stores.some((store) => store.id === activeStoreId) ? activeStoreId : null) ?? nextStores[0]?.id ?? null
     const plannedChanges = new Map<string, string | null>()
 
-    plannedChanges.set(STORE_STORAGE_KEY, JSON.stringify({
-      format: 'trazino-store-workspace',
-      version: 1,
+    const storeStorageKey = activeAccountPhone
+      ? getPhoneStoreStateStorageKey(activeAccountPhone)
+      : STORE_STORAGE_KEY
+    plannedChanges.set(storeStorageKey, serializeStoreState({
       stores: nextStores,
       activeStoreId: nextActiveStoreId,
+      error: '',
     }))
 
     const targetStoreIds = mode === 'replace'
@@ -8517,14 +8570,70 @@ function App() {
 
   const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setAuthNotice('ورود و ثبت‌نام واقعی بعد از اتصال سرور فعال می‌شود. فعلاً می‌توانی نسخهٔ نمایشی را باز کنی.')
-  }
+    const phone = normalizeIranianMobileNumber(authPhone)
+    if (!phone) {
+      setAuthNotice('شمارهٔ همراه معتبر ایران را وارد کنید؛ مثلاً ۰۹۱۲۳۴۵۶۷۸۹.')
+      return
+    }
 
-  const enterDemo = () => {
+    const localAccounts = readLocalPhoneAccounts()
+    if (localAccounts.error) {
+      setAuthNotice(localAccounts.error)
+      return
+    }
+
+    const existingAccount = localAccounts.phones.includes(phone)
+    let nextStoreState: StoredStoreState
+    let claimedLegacyStores = false
+
+    if (existingAccount) {
+      nextStoreState = readStoredStoreState(getPhoneStoreStateStorageKey(phone))
+      if (nextStoreState.error) {
+        setAuthNotice(nextStoreState.error)
+        return
+      }
+    } else {
+      let legacyStoreState: StoredStoreState = {
+        stores: [],
+        activeStoreId: null,
+        error: '',
+      }
+      if (localAccounts.phones.length === 0) {
+        legacyStoreState = readStoredStoreState()
+        if (legacyStoreState.error) {
+          setAuthNotice(legacyStoreState.error)
+          return
+        }
+      }
+      claimedLegacyStores = legacyStoreState.stores.length > 0
+      nextStoreState = claimedLegacyStores
+        ? legacyStoreState
+        : { stores: [], activeStoreId: null, error: '' }
+
+      try {
+        localStorage.setItem(getPhoneStoreStateStorageKey(phone), serializeStoreState(nextStoreState))
+        localStorage.setItem(LOCAL_PHONE_ACCOUNTS_STORAGE_KEY, JSON.stringify({
+          format: 'gerdoo-local-phone-accounts',
+          version: 1,
+          phones: [...localAccounts.phones, phone],
+        }))
+      } catch {
+        setAuthNotice('ساخت حساب محلی انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.')
+        return
+      }
+    }
+
+    setActiveAccountPhone(phone)
+    setAuthPhone(phone)
+    setStoreState(nextStoreState)
+    loadStoreWorkspace(nextStoreState.activeStoreId)
     setDemoEntered(true)
     setActiveSettingsSection('')
-    setActiveTab(stores.length === 0 ? 'فروشگاه' : 'خانه')
+    setActiveTab(nextStoreState.stores.length === 0 ? 'فروشگاه' : 'خانه')
     setAuthNotice('')
+    setNotice(claimedLegacyStores
+      ? 'فروشگاه‌های قبلی این دستگاه به این شمارهٔ محلی اختصاص داده شدند.'
+      : existingAccount ? '' : 'حساب محلی ایجاد شد؛ شمارهٔ همراه تأیید پیامکی نشده است.')
   }
 
   const openStoreForm = (store?: Store) => {
@@ -10442,39 +10551,20 @@ function App() {
           <span className="brand-name">حسابداری <strong>گردو</strong></span>
         </div>
         <div className="topbar-actions">
-          {demoEntered ? (
-            <>
-              <button
-                className="auth-shortcut"
-                type="button"
-                onClick={() => {
-                  setAuthNotice('')
-                  setDemoEntered(false)
-                }}
-              >
-                ورود / ثبت‌نام
-              </button>
-              <button
-                className="logout-button"
-                type="button"
-                onClick={() => {
-                  setAuthMode('login')
-                  setAuthFields({ name: '', phone: '', password: '' })
-                  setAuthNotice('')
-                  setDemoEntered(false)
-                  setActiveTab('خانه')
-                }}
-              >
-                خروج از حساب
-              </button>
-            </>
-          ) : (
+          {demoEntered && (
             <button
-              className="auth-shortcut"
+              className="logout-button"
               type="button"
-              onClick={enterDemo}
+              onClick={() => {
+                setAuthPhone('')
+                setAuthNotice('')
+                setActiveAccountPhone(null)
+                setActiveSettingsSection('')
+                setDemoEntered(false)
+                setActiveTab('خانه')
+              }}
             >
-              ورود به نسخهٔ نمایشی
+              خروج از حساب
             </button>
           )}
           <button
@@ -10511,57 +10601,13 @@ function App() {
             <div className="auth-panel">
               <div className="auth-form-heading">
                 <span className="auth-eyebrow">به حسابداری گردو خوش آمدی</span>
-                {authMode === 'register' && <h2>ساخت حساب کاربری</h2>}
-                <p>
-                  {authMode === 'login'
-                    ? 'برای ادامه، اطلاعات حساب خود را وارد کن.'
-                    : 'برای شروع مدیریت مالی، اطلاعاتت را ثبت کن.'}
-                </p>
-              </div>
-
-              <div className="auth-mode-tabs" role="tablist" aria-label="ورود یا ثبت‌نام">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={authMode === 'login'}
-                  className={authMode === 'login' ? 'selected' : ''}
-                  onClick={() => {
-                    setAuthMode('login')
-                    setAuthNotice('')
-                  }}
-                >
-                  ورود
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={authMode === 'register'}
-                  className={authMode === 'register' ? 'selected' : ''}
-                  onClick={() => {
-                    setAuthMode('register')
-                    setAuthNotice('')
-                  }}
-                >
-                  ثبت‌نام
-                </button>
+                <h2>ورود با شمارهٔ همراه</h2>
+                <p>اگر این شماره روی این دستگاه حساب نداشته باشد، حساب محلی ساخته می‌شود.</p>
               </div>
 
               <form className="auth-form" onSubmit={handleAuthSubmit}>
-                {authMode === 'register' && (
-                  <label className="auth-field">
-                    <span>نام و نام خانوادگی</span>
-                    <input
-                      autoComplete="name"
-                      required
-                      maxLength={80}
-                      value={authFields.name}
-                      onChange={(event) => setAuthFields({ ...authFields, name: event.target.value })}
-                      placeholder="نام شما"
-                    />
-                  </label>
-                )}
                 <label className="auth-field">
-                  <span>شماره موبایل</span>
+                  <span>شمارهٔ همراه</span>
                   <input
                     autoComplete="tel"
                     type="tel"
@@ -10569,50 +10615,23 @@ function App() {
                     dir="ltr"
                     required
                     maxLength={20}
-                    value={authFields.phone}
-                    onChange={(event) => setAuthFields({ ...authFields, phone: event.target.value })}
+                    value={authPhone}
+                    onChange={(event) => {
+                      setAuthPhone(event.target.value)
+                      setAuthNotice('')
+                    }}
                     placeholder="09xx xxx xxxx"
                   />
                 </label>
-                <label className="auth-field">
-                  <span>رمز عبور</span>
-                  <input
-                    autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
-                    type="password"
-                    required
-                    minLength={8}
-                    maxLength={128}
-                    value={authFields.password}
-                    onChange={(event) => setAuthFields({ ...authFields, password: event.target.value })}
-                    placeholder="حداقل ۸ کاراکتر"
-                  />
-                </label>
-                {authMode === 'login' && (
-                  <button
-                    className="auth-forgot"
-                    type="button"
-                    onClick={() => setAuthNotice('بازیابی رمز عبور بعد از اتصال سامانهٔ ورود فعال می‌شود.')}
-                  >
-                    رمز عبور را فراموش کرده‌ام
-                  </button>
-                )}
                 <button className="auth-submit" type="submit">
-                  {authMode === 'login' ? 'ورود به حساب' : 'ایجاد حساب کاربری'}
+                  ادامه با شماره
                   <span aria-hidden="true">‹</span>
                 </button>
                 {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
               </form>
 
-              <div className="auth-separator"><span>یا برای آشنایی</span></div>
-              <button
-                className="auth-demo-button"
-                type="button"
-                onClick={enterDemo}
-              >
-                ورود به نسخهٔ نمایشی
-              </button>
               <p className="auth-disclaimer">
-                ورود و ثبت‌نام فعلاً نمایشی است و پس از آماده‌شدن سرور فعال می‌شود.
+                این نسخه محلی است: شمارهٔ همراه پیامک یا تأیید نمی‌شود و حساب و فروشگاه‌ها فقط روی همین دستگاه ذخیره می‌شوند. برای ورود امن و استفاده روی چند دستگاه، باید سرور و تأیید پیامکی وصل شود.
               </p>
             </div>
           </section>

@@ -7912,10 +7912,23 @@
   white-space: nowrap;
   pointer-events: none;
   transform: translateY(-50%);
+  animation: nav-add-hint-lifetime 3s ease forwards;
 }
 
 .nav-add-hint.is-hidden {
   visibility: hidden;
+  animation-play-state: paused;
+}
+
+@keyframes nav-add-hint-lifetime {
+  0%, 82% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 @keyframes nav-bead-add-pulse {
@@ -10100,6 +10113,10 @@ button:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .nav-add-hint {
+    animation-duration: 3s !important;
   }
 
   .people-add-button::before,
