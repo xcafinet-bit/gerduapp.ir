@@ -125,6 +125,37 @@ function shiftUtcDate(date: Date, days: number) {
   return shifted
 }
 
+function shiftUtcMonths(date: Date, months: number) {
+  const shifted = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1, 12))
+  const lastDay = new Date(Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    0,
+    12,
+  )).getUTCDate()
+  shifted.setUTCDate(Math.min(date.getUTCDate(), lastDay))
+  return shifted
+}
+
+type QuickDatePreset = 'today' | 'week' | 'month' | 'three-months' | 'six-months' | 'year'
+
+function getQuickDateRange(preset: QuickDatePreset, now: Date) {
+  const endDate = getIranDateValue(now)
+  const todayDate = new Date(`${endDate}T12:00:00Z`)
+  let startDate = todayDate
+  if (preset === 'week') startDate = shiftUtcDate(todayDate, -6)
+  if (preset === 'month') {
+    startDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), 1, 12))
+  }
+  if (preset === 'three-months') startDate = shiftUtcMonths(todayDate, -3)
+  if (preset === 'six-months') startDate = shiftUtcMonths(todayDate, -6)
+  if (preset === 'year') startDate = shiftUtcMonths(todayDate, -12)
+  return {
+    startDate: startDate.toISOString().slice(0, 10),
+    endDate,
+  }
+}
+
 function calendarMonthKey(date: Date, calendar: CalendarSystem) {
   const { year, month } = getCalendarParts(date, calendar)
   return `${year}-${month}`
@@ -943,31 +974,39 @@ const entries = [
 ]
 
 const documents = [
-  { icon: 'cart', label: 'فاکتورهای فروش' },
-  { icon: 'box', label: 'فاکتورهای خرید' },
-  { icon: 'returnSale', label: 'برگشت از فروش' },
-  { icon: 'returnPurchase', label: 'برگشت به خرید' },
-  { icon: 'receive', label: 'دریافت‌ها' },
-  { icon: 'pay', label: 'پرداخت‌ها' },
-  { icon: 'check', label: 'چک‌های دریافتی' },
-  { icon: 'pen', label: 'چک‌های پرداختی' },
-  { icon: 'expense', label: 'هزینه‌ها' },
-  { icon: 'income', label: 'درآمدها' },
-  { icon: 'cart', label: 'پیش‌فاکتور' },
+  { permissionKey: 'salesInvoices', icon: 'cart', label: 'فاکتورهای فروش' },
+  { permissionKey: 'purchaseInvoices', icon: 'box', label: 'فاکتورهای خرید' },
+  { permissionKey: 'salesReturns', icon: 'returnSale', label: 'برگشت از فروش' },
+  { permissionKey: 'purchaseReturns', icon: 'returnPurchase', label: 'برگشت به خرید' },
+  { permissionKey: 'receipts', icon: 'receive', label: 'دریافت‌ها' },
+  { permissionKey: 'payments', icon: 'pay', label: 'پرداخت‌ها' },
+  { permissionKey: 'receivedChecks', icon: 'check', label: 'چک‌های دریافتی' },
+  { permissionKey: 'paidChecks', icon: 'pen', label: 'چک‌های پرداختی' },
+  { permissionKey: 'expenses', icon: 'expense', label: 'هزینه‌ها' },
+  { permissionKey: 'incomes', icon: 'income', label: 'درآمدها' },
+  { permissionKey: 'preorder', icon: 'cart', label: 'پیش‌فاکتور' },
 ]
 
 const reports = [
-  { icon: 'chart', label: 'گزارش روزانه', description: 'مرور خلاصهٔ رویدادهای مالی' },
-  { icon: 'people', label: 'گزارش اشخاص', description: 'مانده و گردش طرف حساب‌ها' },
-  { icon: 'accounts', label: 'گزارش حساب‌ها', description: 'موجودی و گردش حساب‌ها' },
-  { icon: 'inventory', label: 'گزارش کالا و انبار', description: 'موجودی و عملکرد کالاها' },
+  { icon: 'chart', label: 'گزارش روزانه', description: 'مرور خلاصهٔ رویدادهای مالی روز' },
+  { icon: 'receive', label: 'ریز گزارش روزانه', description: 'جزئیات رویدادهای مالی روز' },
+  { icon: 'chart', label: 'گزارش دوره‌ای', description: 'گزارش مالی در بازهٔ زمانی دلخواه' },
+  { icon: 'accounts', label: 'گزارش دارایی', description: 'نمای کلی دارایی‌های کسب‌وکار' },
+  { icon: 'cart', label: 'محاسبه سود فاکتور', description: 'محاسبهٔ سود فاکتورهای فروش' },
+  { icon: 'chart', label: 'مجموع سود فاکتور', description: 'جمع سود فاکتورهای فروش' },
+  { icon: 'accounts', label: 'گزارش سود و زیان', description: 'نمای کلی سود و زیان کسب‌وکار' },
 ]
 
-const analyticalReports = [
-  { icon: 'chart', label: 'روند مالی', description: 'تغییرات مالی در بازه‌های زمانی' },
-  { icon: 'accounts', label: 'گزارش دارایی‌ها', description: 'نمای کلی دارایی‌های کسب‌وکار' },
-  { icon: 'cart', label: 'تحلیل سود فاکتورها', description: 'بررسی سود فروش و خرید' },
+const invoiceProfitPresets: { id: QuickDatePreset; label: string }[] = [
+  { id: 'today', label: 'امروز' },
+  { id: 'week', label: '۷ روز اخیر' },
+  { id: 'month', label: 'از ابتدای ماه' },
+  { id: 'three-months', label: '۳ ماهه' },
+  { id: 'six-months', label: '۶ ماهه' },
+  { id: 'year', label: 'سالانه' },
 ]
+
+type AssetValuationBasis = 'purchase' | 'sale'
 
 const navigation = [
   { icon: 'home', label: 'خانه' },
@@ -1418,6 +1457,69 @@ type StoredMoneyDocuments = {
   error: string
 }
 
+type ProfitLossEntryKind = 'فاکتور فروش' | 'برگشت از فروش' | 'درآمد' | 'هزینه'
+
+type ProfitLossReportRow = {
+  id: string
+  date: string
+  calendar: CalendarSystem
+  kind: ProfitLossEntryKind
+  reference: string
+  detail: string
+  amount: number | null
+  missingCostLines: number
+}
+
+type DailyReportCategory =
+  | 'فروش'
+  | 'خرید'
+  | 'برگشت از فروش'
+  | 'برگشت به خرید'
+  | 'دریافت'
+  | 'پرداخت'
+  | 'درآمد'
+  | 'هزینه'
+  | 'چک دریافتی'
+  | 'چک پرداختی'
+  | 'وصول چک دریافتی'
+  | 'وصول چک پرداختی'
+  | 'خرج چک'
+  | 'انتقال حساب'
+  | 'انتقال اشخاص'
+  | 'پیش‌فاکتور'
+
+type DailyReportEntry = {
+  id: string
+  category: DailyReportCategory
+  reference: string
+  description: string
+  amount: number
+  time: string
+}
+
+type PeriodReportEntry = DailyReportEntry & {
+  date: string
+}
+
+const dailyReportCategories: { id: DailyReportCategory; icon: string; tone: string; supported?: boolean }[] = [
+  { id: 'فروش', icon: 'cart', tone: 'sale' },
+  { id: 'خرید', icon: 'box', tone: 'purchase' },
+  { id: 'برگشت از فروش', icon: 'returnSale', tone: 'return' },
+  { id: 'برگشت به خرید', icon: 'returnPurchase', tone: 'return' },
+  { id: 'دریافت', icon: 'receive', tone: 'receive' },
+  { id: 'پرداخت', icon: 'pay', tone: 'pay' },
+  { id: 'درآمد', icon: 'income', tone: 'receive' },
+  { id: 'هزینه', icon: 'expense', tone: 'pay' },
+  { id: 'چک دریافتی', icon: 'check', tone: 'check' },
+  { id: 'چک پرداختی', icon: 'pen', tone: 'check' },
+  { id: 'وصول چک دریافتی', icon: 'check', tone: 'receive' },
+  { id: 'وصول چک پرداختی', icon: 'pen', tone: 'pay' },
+  { id: 'خرج چک', icon: 'refresh', tone: 'return' },
+  { id: 'انتقال حساب', icon: 'accounts', tone: 'account' },
+  { id: 'انتقال اشخاص', icon: 'people', tone: 'account', supported: false },
+  { id: 'پیش‌فاکتور', icon: 'cart', tone: 'purchase', supported: false },
+]
+
 type CheckRecord = {
   id: string
   number: string
@@ -1814,6 +1916,38 @@ type InventoryRecord = {
   barcode?: string
   secondaryUnit?: string
   conversionRatio?: number
+}
+
+function calculateSavedInvoiceProfit(
+  invoice: SavedSalesInvoice,
+  inventoryById: ReadonlyMap<string, InventoryRecord>,
+) {
+  let cost = 0
+  let missingCostLines = 0
+  for (const line of invoice.lines) {
+    const item = inventoryById.get(line.itemId)
+    if (!item) {
+      missingCostLines += 1
+      continue
+    }
+    cost += item.purchasePrice * line.quantity
+  }
+
+  const profitAdjustments = invoice.adjustments.reduce((total, adjustment) => {
+    if (!adjustment.affectsProfit) return total
+    const amount = adjustment.mode === 'percent'
+      ? Math.round(invoice.subtotal * adjustment.value / 100)
+      : adjustment.value
+    return total + (adjustment.kind === 'addition' ? amount : -amount)
+  }, 0)
+  const revenue = invoice.lines.reduce((total, line) => total + line.total, 0) + profitAdjustments
+
+  return {
+    revenue,
+    cost,
+    profit: missingCostLines ? null : revenue - cost,
+    missingCostLines,
+  }
 }
 
 type InventoryStockMovement = {
@@ -2284,6 +2418,15 @@ type StoreUserDocumentPermissionKey = (typeof storeUserDocumentPermissionItems)[
 type StoreUserDocumentPermissions = Record<StoreUserDocumentPermissionKey, boolean>
 type StoreUserDashboardPermissionKey = (typeof quickLinks)[number]['key']
 type StoreUserDashboardPermissions = Record<StoreUserDashboardPermissionKey, boolean>
+type StoreUserHomeDocumentPermissionKey = (typeof documents)[number]['permissionKey']
+type StoreUserHomeDocumentPermissions = Record<StoreUserHomeDocumentPermissionKey, boolean>
+const storeUserPeoplePermissionItems = [
+  { key: 'view', label: 'مشاهدهٔ اشخاص' },
+  { key: 'create', label: 'افزودن شخص' },
+  { key: 'edit', label: 'ویرایش اشخاص' },
+  { key: 'delete', label: 'حذف اشخاص' },
+] as const
+type StoreUserPeoplePermissions = Record<(typeof storeUserPeoplePermissionItems)[number]['key'], boolean>
 
 const createStoreUserDocumentPermissions = (enabled: boolean): StoreUserDocumentPermissions => ({
   salesInvoice: enabled,
@@ -2308,8 +2451,31 @@ const createStoreUserDashboardPermissions = (enabled: boolean): StoreUserDashboa
   support: enabled,
 })
 
+const createStoreUserHomeDocumentPermissions = (enabled: boolean): StoreUserHomeDocumentPermissions => ({
+  salesInvoices: enabled,
+  purchaseInvoices: enabled,
+  salesReturns: enabled,
+  purchaseReturns: enabled,
+  receipts: enabled,
+  payments: enabled,
+  receivedChecks: enabled,
+  paidChecks: enabled,
+  expenses: enabled,
+  incomes: enabled,
+  preorder: enabled,
+})
+
+const createStoreUserPeoplePermissions = (enabled: boolean): StoreUserPeoplePermissions => ({
+  view: enabled,
+  create: enabled,
+  edit: enabled,
+  delete: enabled,
+})
+
 const emptyStoreUserDocumentPermissions = createStoreUserDocumentPermissions(false)
 const emptyStoreUserDashboardPermissions = createStoreUserDashboardPermissions(false)
+const emptyStoreUserHomeDocumentPermissions = createStoreUserHomeDocumentPermissions(false)
+const emptyStoreUserPeoplePermissions = createStoreUserPeoplePermissions(false)
 
 type StoreUser = {
   id: string
@@ -2319,6 +2485,8 @@ type StoreUser = {
   active: boolean
   documentPermissions?: StoreUserDocumentPermissions
   dashboardPermissions?: StoreUserDashboardPermissions
+  homeDocumentPermissions?: StoreUserHomeDocumentPermissions
+  peoplePermissions?: StoreUserPeoplePermissions
   canCreateAllDocuments?: boolean
 }
 
@@ -2336,6 +2504,8 @@ const emptyStoreUserFields: StoreUserFields = {
   active: true,
   documentPermissions: { ...emptyStoreUserDocumentPermissions },
   dashboardPermissions: { ...emptyStoreUserDashboardPermissions },
+  homeDocumentPermissions: { ...emptyStoreUserHomeDocumentPermissions },
+  peoplePermissions: { ...emptyStoreUserPeoplePermissions },
 }
 
 function isStoreUserDocumentPermissions(value: unknown): value is StoreUserDocumentPermissions {
@@ -2350,6 +2520,18 @@ function isStoreUserDashboardPermissions(value: unknown): value is StoreUserDash
   return quickLinks.every(({ key }) => typeof permissions[key] === 'boolean')
 }
 
+function isStoreUserHomeDocumentPermissions(value: unknown): value is StoreUserHomeDocumentPermissions {
+  if (!value || typeof value !== 'object') return false
+  const permissions = value as Record<string, unknown>
+  return documents.every(({ permissionKey }) => typeof permissions[permissionKey] === 'boolean')
+}
+
+function isStoreUserPeoplePermissions(value: unknown): value is StoreUserPeoplePermissions {
+  if (!value || typeof value !== 'object') return false
+  const permissions = value as Record<string, unknown>
+  return storeUserPeoplePermissionItems.every(({ key }) => typeof permissions[key] === 'boolean')
+}
+
 function isStoreUser(value: unknown): value is StoreUser {
   if (!value || typeof value !== 'object') return false
   const user = value as Record<string, unknown>
@@ -2360,6 +2542,8 @@ function isStoreUser(value: unknown): value is StoreUser {
     && typeof user.active === 'boolean'
     && (user.documentPermissions === undefined || isStoreUserDocumentPermissions(user.documentPermissions))
     && (user.dashboardPermissions === undefined || isStoreUserDashboardPermissions(user.dashboardPermissions))
+    && (user.homeDocumentPermissions === undefined || isStoreUserHomeDocumentPermissions(user.homeDocumentPermissions))
+    && (user.peoplePermissions === undefined || isStoreUserPeoplePermissions(user.peoplePermissions))
     && (user.canCreateAllDocuments === undefined || typeof user.canCreateAllDocuments === 'boolean')
 }
 
@@ -2377,6 +2561,8 @@ function readStoredStoreUsers(storeId: number | null): StoredStoreUsers {
         documentPermissions: user.documentPermissions
           ?? createStoreUserDocumentPermissions(user.canCreateAllDocuments ?? false),
         dashboardPermissions: user.dashboardPermissions ?? createStoreUserDashboardPermissions(false),
+        homeDocumentPermissions: user.homeDocumentPermissions ?? createStoreUserHomeDocumentPermissions(false),
+        peoplePermissions: user.peoplePermissions ?? createStoreUserPeoplePermissions(false),
       })),
       error: '',
     }
@@ -2919,6 +3105,45 @@ function App() {
   const [storeState, setStoreState] = useState(readStoredStoreState)
   const { stores, activeStoreId } = storeState
   const [activeTab, setActiveTab] = useState('خانه')
+  const [assetValuationBasis, setAssetValuationBasis] = useState<AssetValuationBasis>('purchase')
+  const [invoiceProfitMode, setInvoiceProfitMode] = useState<'date' | 'invoice'>('date')
+  const [invoiceProfitStartDate, setInvoiceProfitStartDate] = useState(() => getIranDateValue(new Date()))
+  const [invoiceProfitEndDate, setInvoiceProfitEndDate] = useState(() => getIranDateValue(new Date()))
+  const [invoiceProfitDatePickerOpen, setInvoiceProfitDatePickerOpen] = useState(false)
+  const [invoiceProfitDateTarget, setInvoiceProfitDateTarget] = useState<'start' | 'end'>('start')
+  const [invoiceProfitDraftDate, setInvoiceProfitDraftDate] = useState(() => normalizeUtcDate(new Date()))
+  const [invoiceProfitCalendar, setInvoiceProfitCalendar] = useState<CalendarSystem>('persian')
+  const [invoiceProfitVisibleMonth, setInvoiceProfitVisibleMonth] = useState(() => normalizeUtcDate(new Date()))
+  const [invoiceProfitStartId, setInvoiceProfitStartId] = useState('')
+  const [invoiceProfitEndId, setInvoiceProfitEndId] = useState('')
+  const [invoiceProfitCalculated, setInvoiceProfitCalculated] = useState(false)
+  const [invoiceProfitError, setInvoiceProfitError] = useState('')
+  const [singleInvoiceProfitSelectedId, setSingleInvoiceProfitSelectedId] = useState('')
+  const [singleInvoiceProfitCalculatedId, setSingleInvoiceProfitCalculatedId] = useState('')
+  const [singleInvoiceProfitError, setSingleInvoiceProfitError] = useState('')
+  const [dailyReportDate, setDailyReportDate] = useState(() => getIranDateValue(new Date()))
+  const [dailyReportDatePickerOpen, setDailyReportDatePickerOpen] = useState(false)
+  const [dailyReportDraftDate, setDailyReportDraftDate] = useState(() => normalizeUtcDate(new Date()))
+  const [dailyReportCalendar, setDailyReportCalendar] = useState<CalendarSystem>('persian')
+  const [dailyReportVisibleMonth, setDailyReportVisibleMonth] = useState(() => normalizeUtcDate(new Date()))
+  const [dailyReportCalculated, setDailyReportCalculated] = useState(false)
+  const [dailyReportExpandedCategory, setDailyReportExpandedCategory] = useState<DailyReportCategory | null>(null)
+  const [dailyReportError, setDailyReportError] = useState('')
+  const [dailyReportSearch, setDailyReportSearch] = useState('')
+  const [dailyReportCategoryFilter, setDailyReportCategoryFilter] = useState<DailyReportCategory | 'همه'>('همه')
+  const [profitLossStartDate, setProfitLossStartDate] = useState(() => getIranDateValue(new Date()))
+  const [profitLossEndDate, setProfitLossEndDate] = useState(() => getIranDateValue(new Date()))
+  const [profitLossDatePickerOpen, setProfitLossDatePickerOpen] = useState(false)
+  const [profitLossDateTarget, setProfitLossDateTarget] = useState<'start' | 'end'>('start')
+  const [profitLossDraftDate, setProfitLossDraftDate] = useState(() => normalizeUtcDate(new Date()))
+  const [profitLossCalendar, setProfitLossCalendar] = useState<CalendarSystem>('persian')
+  const [profitLossVisibleMonth, setProfitLossVisibleMonth] = useState(() => normalizeUtcDate(new Date()))
+  const [profitLossCalculated, setProfitLossCalculated] = useState(false)
+  const [profitLossError, setProfitLossError] = useState('')
+  const [periodReportCalculated, setPeriodReportCalculated] = useState(false)
+  const [periodReportError, setPeriodReportError] = useState('')
+  const [periodReportSearch, setPeriodReportSearch] = useState('')
+  const [periodReportCategoryFilter, setPeriodReportCategoryFilter] = useState<DailyReportCategory | 'همه'>('همه')
   const homeContentRef = useRef<HTMLElement | null>(null)
   const homeScrollPositionRef = useRef<number | null>(null)
   const [activeSettingsSection, setActiveSettingsSection] = useState('')
@@ -3287,6 +3512,9 @@ function App() {
   useEffect(() => {
     if (
       !salesInvoiceDatePickerOpen
+      && !invoiceProfitDatePickerOpen
+      && !profitLossDatePickerOpen
+      && !dailyReportDatePickerOpen
       && !salesInvoiceTimePickerOpen
       && !salesInvoiceAttachmentPickerOpen
       && !salesInvoiceBarcodeScannerOpen
@@ -3307,6 +3535,9 @@ function App() {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setSalesInvoiceDatePickerOpen(false)
+        setInvoiceProfitDatePickerOpen(false)
+        setProfitLossDatePickerOpen(false)
+        setDailyReportDatePickerOpen(false)
         setSalesInvoiceTimePickerOpen(false)
         setSalesInvoiceAttachmentPickerOpen(false)
         setSalesInvoiceBarcodeScannerOpen(false)
@@ -3342,6 +3573,9 @@ function App() {
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [
     salesInvoiceDatePickerOpen,
+    invoiceProfitDatePickerOpen,
+    profitLossDatePickerOpen,
+    dailyReportDatePickerOpen,
     salesInvoiceTimePickerOpen,
     salesInvoiceAttachmentPickerOpen,
     salesInvoiceBarcodeScannerOpen,
@@ -3428,7 +3662,7 @@ function App() {
   const [storedStoreUsers, setStoredStoreUsers] = useState(() => readStoredStoreUsers(activeStoreId))
   const [storeUserFormOpen, setStoreUserFormOpen] = useState(false)
   const [storeUserFormTab, setStoreUserFormTab] = useState<'basic' | 'permissions'>('basic')
-  const [storeUserPermissionSectionOpen, setStoreUserPermissionSectionOpen] = useState<'documents' | 'dashboard' | null>(null)
+  const [storeUserPermissionSectionOpen, setStoreUserPermissionSectionOpen] = useState<'home' | 'documents' | 'dashboard' | 'home-documents' | 'people' | null>(null)
   const [storeUserPermissionModalTop, setStoreUserPermissionModalTop] = useState<number | null>(null)
   const storeUserModalRef = useRef<HTMLElement | null>(null)
   const [storeUserFormError, setStoreUserFormError] = useState('')
@@ -3453,6 +3687,38 @@ function App() {
     return totals
   }, { received: 0, paid: 0 })
   const reportAccountsTotal = storedAccounts.accounts.reduce((total, account) => total + account.balance, 0)
+  const assetReportDebtors = allPeople.reduce(
+    (total, person) => total + (person.accountStatus === 'بدهکاران' ? person.balance : 0),
+    0,
+  )
+  const assetReportCreditors = allPeople.reduce(
+    (total, person) => total + (person.accountStatus === 'بستانکاران' ? person.balance : 0),
+    0,
+  )
+  const assetReportInventoryValue = storedInventoryRecords.items.reduce((total, item) => {
+    if (item.kind === 'خدمات') return total
+    const unitValue = assetValuationBasis === 'purchase' ? item.purchasePrice : item.salePrice
+    return total + item.stock * unitValue
+  }, 0)
+  const assetReportUnclearedPaidChecks = storedPaidChecks.checks.reduce(
+    (total, check) => total + (check.clearedAt ? 0 : check.amount),
+    0,
+  )
+  const assetReportUnclearedReceivedChecks = storedReceivedChecks.checks.reduce(
+    (total, check) => total + (check.clearedAt ? 0 : check.amount),
+    0,
+  )
+  const assetReportTotalAssets = reportAccountsTotal
+    + assetReportDebtors
+    + assetReportInventoryValue
+    + assetReportUnclearedReceivedChecks
+  const assetReportTotalLiabilities = assetReportCreditors + assetReportUnclearedPaidChecks
+  const assetReportNetAssets = assetReportTotalAssets - assetReportTotalLiabilities
+  const assetReportError = storedAccounts.error
+    || storedPeopleState.error
+    || storedInventoryRecords.error
+    || storedPaidChecks.error
+    || storedReceivedChecks.error
   const accountReportStatusCounts = accountReportPeople.reduce((counts, person) => {
     counts[person.accountStatus] += 1
     return counts
@@ -3657,6 +3923,676 @@ function App() {
       const query = salesInvoiceListSearch.trim().toLocaleLowerCase()
       return !query || `${invoice.number} ${invoice.buyerName}`.toLocaleLowerCase().includes(query)
     })
+  const invoiceProfitOptions = useMemo(() => [...storedSalesInvoices.invoices].sort((first, second) => (
+    first.date.localeCompare(second.date)
+    || first.number.localeCompare(second.number, 'fa', { numeric: true })
+    || first.id.localeCompare(second.id)
+  )), [storedSalesInvoices.invoices])
+  const selectedSingleInvoiceId = invoiceProfitOptions.some(
+    (invoice) => invoice.id === singleInvoiceProfitSelectedId,
+  )
+    ? singleInvoiceProfitSelectedId
+    : invoiceProfitOptions[invoiceProfitOptions.length - 1]?.id ?? ''
+  const selectedSingleInvoice = invoiceProfitOptions.find(
+    (invoice) => invoice.id === selectedSingleInvoiceId,
+  ) ?? null
+  const singleInvoiceProfitData = useMemo(() => {
+    if (
+      !selectedSingleInvoice
+      || singleInvoiceProfitCalculatedId !== selectedSingleInvoice.id
+      || storedInventoryRecords.error
+    ) return null
+
+    const inventoryById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
+    return {
+      summary: calculateSavedInvoiceProfit(selectedSingleInvoice, inventoryById),
+      lines: selectedSingleInvoice.lines.map((line) => {
+        const item = inventoryById.get(line.itemId)
+        const cost = item ? item.purchasePrice * line.quantity : null
+        return {
+          line,
+          cost,
+          profit: cost === null ? null : line.total - cost,
+        }
+      }),
+    }
+  }, [
+    selectedSingleInvoice,
+    singleInvoiceProfitCalculatedId,
+    storedInventoryRecords.error,
+    storedInventoryRecords.items,
+  ])
+  const singleInvoiceProfitAdjustment = singleInvoiceProfitData
+    ? singleInvoiceProfitData.summary.revenue
+      - (selectedSingleInvoice?.lines.reduce((total, line) => total + line.total, 0) ?? 0)
+    : 0
+  const selectedProfitStartId = invoiceProfitOptions.some((invoice) => invoice.id === invoiceProfitStartId)
+    ? invoiceProfitStartId
+    : invoiceProfitOptions[0]?.id ?? ''
+  const selectedProfitEndId = invoiceProfitOptions.some((invoice) => invoice.id === invoiceProfitEndId)
+    ? invoiceProfitEndId
+    : invoiceProfitOptions[invoiceProfitOptions.length - 1]?.id ?? ''
+  const invoiceProfitRows = useMemo(() => {
+    if (!invoiceProfitCalculated) return []
+
+    let invoices: SavedSalesInvoice[] = []
+    if (invoiceProfitMode === 'date') {
+      invoices = invoiceProfitOptions.filter((invoice) => (
+        invoice.date >= invoiceProfitStartDate && invoice.date <= invoiceProfitEndDate
+      ))
+    } else {
+      const startIndex = invoiceProfitOptions.findIndex((invoice) => invoice.id === selectedProfitStartId)
+      const endIndex = invoiceProfitOptions.findIndex((invoice) => invoice.id === selectedProfitEndId)
+      if (startIndex >= 0 && endIndex >= startIndex) {
+        invoices = invoiceProfitOptions.slice(startIndex, endIndex + 1)
+      }
+    }
+
+    const inventoryById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
+    return invoices.map((invoice) => {
+      return {
+        invoice,
+        ...calculateSavedInvoiceProfit(invoice, inventoryById),
+      }
+    }).reverse()
+  }, [
+    invoiceProfitCalculated,
+    invoiceProfitMode,
+    invoiceProfitOptions,
+    invoiceProfitStartDate,
+    invoiceProfitEndDate,
+    selectedProfitStartId,
+    selectedProfitEndId,
+    storedInventoryRecords.items,
+  ])
+  const invoiceProfitCompleteRows = invoiceProfitRows.filter((row) => row.profit !== null)
+  const invoiceProfitTotalRevenue = invoiceProfitCompleteRows.reduce((total, row) => total + row.revenue, 0)
+  const invoiceProfitTotalCost = invoiceProfitCompleteRows.reduce((total, row) => total + row.cost, 0)
+  const invoiceProfitTotal = invoiceProfitCompleteRows.reduce((total, row) => total + (row.profit ?? 0), 0)
+  const profitLossRows = useMemo<ProfitLossReportRow[]>(() => {
+    if (!profitLossCalculated) return []
+
+    const inventoryById = new Map(storedInventoryRecords.items.map((item) => [item.id, item]))
+    const rows: ProfitLossReportRow[] = []
+    for (const invoice of storedSalesInvoices.invoices) {
+      if (invoice.date < profitLossStartDate || invoice.date > profitLossEndDate) continue
+      const calculation = calculateSavedInvoiceProfit(invoice, inventoryById)
+      rows.push({
+        id: `sale-${invoice.id}`,
+        date: invoice.date,
+        calendar: invoice.calendar,
+        kind: 'فاکتور فروش',
+        reference: invoice.number,
+        detail: invoice.buyerName,
+        amount: calculation.profit,
+        missingCostLines: calculation.missingCostLines,
+      })
+    }
+    for (const invoice of storedReturnSalesInvoices.invoices) {
+      if (invoice.date < profitLossStartDate || invoice.date > profitLossEndDate) continue
+      const calculation = calculateSavedInvoiceProfit(invoice, inventoryById)
+      rows.push({
+        id: `return-${invoice.id}`,
+        date: invoice.date,
+        calendar: invoice.calendar,
+        kind: 'برگشت از فروش',
+        reference: invoice.number,
+        detail: invoice.buyerName,
+        amount: calculation.profit === null ? null : -calculation.profit,
+        missingCostLines: calculation.missingCostLines,
+      })
+    }
+    for (const document of storedMoneyDocuments.documents) {
+      if (
+        document.date < profitLossStartDate
+        || document.date > profitLossEndDate
+        || (document.kind !== 'درآمد' && document.kind !== 'هزینه')
+      ) continue
+      rows.push({
+        id: `money-${document.id}`,
+        date: document.date,
+        calendar: document.calendar,
+        kind: document.kind,
+        reference: document.number,
+        detail: document.description || document.personName || '—',
+        amount: document.kind === 'درآمد' ? document.amount : -document.amount,
+        missingCostLines: 0,
+      })
+    }
+    return rows.sort((first, second) => (
+      second.date.localeCompare(first.date)
+      || first.reference.localeCompare(second.reference, 'fa', { numeric: true })
+    ))
+  }, [
+    profitLossCalculated,
+    profitLossStartDate,
+    profitLossEndDate,
+    storedInventoryRecords.items,
+    storedSalesInvoices.invoices,
+    storedReturnSalesInvoices.invoices,
+    storedMoneyDocuments.documents,
+  ])
+  const profitLossGrossProfit = profitLossRows
+    .filter((row) => row.kind === 'فاکتور فروش' || row.kind === 'برگشت از فروش')
+    .reduce((total, row) => total + (row.amount ?? 0), 0)
+  const profitLossOtherIncome = profitLossRows
+    .filter((row) => row.kind === 'درآمد')
+    .reduce((total, row) => total + (row.amount ?? 0), 0)
+  const profitLossExpenseTotal = -profitLossRows
+    .filter((row) => row.kind === 'هزینه')
+    .reduce((total, row) => total + (row.amount ?? 0), 0)
+  const profitLossNet = profitLossGrossProfit + profitLossOtherIncome - profitLossExpenseTotal
+  const periodReportEntries = useMemo<PeriodReportEntry[]>(() => {
+    if (!periodReportCalculated) return []
+
+    const entries: PeriodReportEntry[] = []
+    const inRange = (date: string) => date >= profitLossStartDate && date <= profitLossEndDate
+    const addInvoice = (invoice: SavedSalesInvoice, category: DailyReportCategory) => {
+      if (!inRange(invoice.date)) return
+      entries.push({
+        id: `${category}-${invoice.id}`,
+        category,
+        reference: invoice.number,
+        description: invoice.buyerName,
+        amount: invoice.total,
+        time: `${String(invoice.time.hours).padStart(2, '0')}:${String(invoice.time.minutes).padStart(2, '0')}`,
+        date: invoice.date,
+      })
+    }
+
+    for (const invoice of storedSalesInvoices.invoices) {
+      addInvoice(invoice, 'فروش')
+      for (const receipt of invoice.receipts ?? []) {
+        if (!inRange(receipt.date)) continue
+        entries.push({
+          id: `period-receipt-${receipt.id}`,
+          category: 'دریافت',
+          reference: invoice.number,
+          description: receipt.note || `دریافت بابت فاکتور از ${invoice.buyerName}`,
+          amount: receipt.amount,
+          time: `${String(receipt.time.hours).padStart(2, '0')}:${String(receipt.time.minutes).padStart(2, '0')}`,
+          date: receipt.date,
+        })
+      }
+    }
+    for (const invoice of storedPurchaseInvoices.invoices) addInvoice(invoice, 'خرید')
+    for (const invoice of storedReturnSalesInvoices.invoices) addInvoice(invoice, 'برگشت از فروش')
+    for (const invoice of storedReturnPurchaseInvoices.invoices) addInvoice(invoice, 'برگشت به خرید')
+
+    for (const document of storedMoneyDocuments.documents) {
+      if (!inRange(document.date)) continue
+      entries.push({
+        id: `period-${document.id}`,
+        category: document.kind,
+        reference: document.number,
+        description: document.description || document.personName || '—',
+        amount: document.amount,
+        time: document.time,
+        date: document.date,
+      })
+    }
+
+    for (const [checks, category, clearedCategory] of [
+      [storedReceivedChecks.checks, 'چک دریافتی', 'وصول چک دریافتی'],
+      [storedPaidChecks.checks, 'چک پرداختی', 'وصول چک پرداختی'],
+    ] as const) {
+      for (const check of checks) {
+        if (inRange(check.date)) {
+          entries.push({
+            id: `period-check-${check.id}`,
+            category,
+            reference: check.number,
+            description: `${check.personName} · ${check.bankName}`,
+            amount: check.amount,
+            time: check.time,
+            date: check.date,
+          })
+        }
+        if (category === 'چک دریافتی' && check.transfer && inRange(check.transfer.date)) {
+          entries.push({
+            id: `period-spent-check-${check.id}`,
+            category: 'خرج چک',
+            reference: check.number,
+            description: `واگذاری به ${check.transfer.personName}`,
+            amount: check.amount,
+            time: check.transfer.time,
+            date: check.transfer.date,
+          })
+        }
+        if (check.clearedAt) {
+          const clearedAt = new Date(check.clearedAt)
+          const clearedDate = getIranDateValue(clearedAt)
+          if (!inRange(clearedDate)) continue
+          const clearedTime = getIranClockParts(clearedAt)
+          entries.push({
+            id: `period-cleared-check-${check.id}`,
+            category: clearedCategory,
+            reference: check.number,
+            description: check.personName,
+            amount: check.amount,
+            time: `${String(clearedTime.hours).padStart(2, '0')}:${String(clearedTime.minutes).padStart(2, '0')}`,
+            date: clearedDate,
+          })
+        }
+      }
+    }
+
+    const accountNameById = new Map(storedAccounts.accounts.map((account) => [account.id, account.name]))
+    for (const transfer of storedAccountTransfers.transfers) {
+      if (!inRange(transfer.date)) continue
+      const sourceName = accountNameById.get(transfer.sourceAccountId) ?? 'حساب مبدأ'
+      const destinationName = accountNameById.get(transfer.destinationAccountId) ?? 'حساب مقصد'
+      entries.push({
+        id: `period-${transfer.id}`,
+        category: 'انتقال حساب',
+        reference: 'انتقال وجه',
+        description: `${sourceName} به ${destinationName}${transfer.note ? ` · ${transfer.note}` : ''}`,
+        amount: transfer.amount,
+        time: transfer.time,
+        date: transfer.date,
+      })
+    }
+
+    return entries.sort((first, second) => (
+      second.date.localeCompare(first.date) || second.time.localeCompare(first.time)
+    ))
+  }, [
+    periodReportCalculated,
+    profitLossStartDate,
+    profitLossEndDate,
+    storedSalesInvoices.invoices,
+    storedPurchaseInvoices.invoices,
+    storedReturnSalesInvoices.invoices,
+    storedReturnPurchaseInvoices.invoices,
+    storedMoneyDocuments.documents,
+    storedReceivedChecks.checks,
+    storedPaidChecks.checks,
+    storedAccountTransfers.transfers,
+    storedAccounts.accounts,
+  ])
+  const periodReportTotals = useMemo(() => {
+    const totals = new Map<DailyReportCategory, { amount: number; count: number }>()
+    for (const entry of periodReportEntries) {
+      const total = totals.get(entry.category) ?? { amount: 0, count: 0 }
+      total.amount += entry.amount
+      total.count += 1
+      totals.set(entry.category, total)
+    }
+    return totals
+  }, [periodReportEntries])
+  const periodReportVisibleEntries = useMemo(() => {
+    const query = periodReportSearch.trim().toLocaleLowerCase()
+    return periodReportEntries.filter((entry) => (
+      (periodReportCategoryFilter === 'همه' || entry.category === periodReportCategoryFilter)
+      && (!query || `${entry.category} ${entry.reference} ${entry.description} ${entry.amount}`
+        .toLocaleLowerCase()
+        .includes(query))
+    ))
+  }, [periodReportCategoryFilter, periodReportEntries, periodReportSearch])
+  const periodReportDataError = storedSalesInvoices.error
+    || storedPurchaseInvoices.error
+    || storedReturnSalesInvoices.error
+    || storedReturnPurchaseInvoices.error
+    || storedMoneyDocuments.error
+    || storedReceivedChecks.error
+    || storedPaidChecks.error
+    || storedAccountTransfers.error
+    || (storedAccountTransfers.transfers.some((transfer) => (
+      transfer.date >= profitLossStartDate && transfer.date <= profitLossEndDate
+    ))
+      ? storedAccounts.error
+      : '')
+  const dailyReportEntries = useMemo<DailyReportEntry[]>(() => {
+    if (!dailyReportCalculated) return []
+
+    const entries: DailyReportEntry[] = []
+    const addInvoice = (invoice: SavedSalesInvoice, category: DailyReportCategory) => {
+      if (invoice.date !== dailyReportDate) return
+      entries.push({
+        id: `${category}-${invoice.id}`,
+        category,
+        reference: invoice.number,
+        description: invoice.buyerName,
+        amount: invoice.total,
+        time: `${String(invoice.time.hours).padStart(2, '0')}:${String(invoice.time.minutes).padStart(2, '0')}`,
+      })
+    }
+
+    for (const invoice of storedSalesInvoices.invoices) {
+      addInvoice(invoice, 'فروش')
+      for (const receipt of invoice.receipts ?? []) {
+        if (receipt.date !== dailyReportDate) continue
+        entries.push({
+          id: `invoice-receipt-${receipt.id}`,
+          category: 'دریافت',
+          reference: invoice.number,
+          description: receipt.note || `دریافت بابت فاکتور از ${invoice.buyerName}`,
+          amount: receipt.amount,
+          time: `${String(receipt.time.hours).padStart(2, '0')}:${String(receipt.time.minutes).padStart(2, '0')}`,
+        })
+      }
+    }
+    for (const invoice of storedPurchaseInvoices.invoices) addInvoice(invoice, 'خرید')
+    for (const invoice of storedReturnSalesInvoices.invoices) addInvoice(invoice, 'برگشت از فروش')
+    for (const invoice of storedReturnPurchaseInvoices.invoices) addInvoice(invoice, 'برگشت به خرید')
+
+    for (const document of storedMoneyDocuments.documents) {
+      if (document.date !== dailyReportDate) continue
+      entries.push({
+        id: document.id,
+        category: document.kind,
+        reference: document.number,
+        description: document.description || document.personName || '—',
+        amount: document.amount,
+        time: document.time,
+      })
+    }
+
+    for (const [checks, category, clearedCategory] of [
+      [storedReceivedChecks.checks, 'چک دریافتی', 'وصول چک دریافتی'],
+      [storedPaidChecks.checks, 'چک پرداختی', 'وصول چک پرداختی'],
+    ] as const) {
+      for (const check of checks) {
+        if (check.date === dailyReportDate) {
+          entries.push({
+            id: `check-${check.id}`,
+            category,
+            reference: check.number,
+            description: `${check.personName} · ${check.bankName}`,
+            amount: check.amount,
+            time: check.time,
+          })
+        }
+
+        if (category === 'چک دریافتی' && check.transfer?.date === dailyReportDate) {
+          entries.push({
+            id: `spent-check-${check.id}`,
+            category: 'خرج چک',
+            reference: check.number,
+            description: `واگذاری به ${check.transfer.personName}`,
+            amount: check.amount,
+            time: check.transfer.time,
+          })
+        }
+
+        if (check.clearedAt && getIranDateValue(new Date(check.clearedAt)) === dailyReportDate) {
+          const clearedDate = new Date(check.clearedAt)
+          const clearedTime = getIranClockParts(clearedDate)
+          entries.push({
+            id: `cleared-check-${check.id}`,
+            category: clearedCategory,
+            reference: check.number,
+            description: check.personName,
+            amount: check.amount,
+            time: `${String(clearedTime.hours).padStart(2, '0')}:${String(clearedTime.minutes).padStart(2, '0')}`,
+          })
+        }
+      }
+    }
+
+    const accountNameById = new Map(storedAccounts.accounts.map((account) => [account.id, account.name]))
+    for (const transfer of storedAccountTransfers.transfers) {
+      if (transfer.date !== dailyReportDate) continue
+      const sourceName = accountNameById.get(transfer.sourceAccountId) ?? 'حساب مبدأ'
+      const destinationName = accountNameById.get(transfer.destinationAccountId) ?? 'حساب مقصد'
+      entries.push({
+        id: transfer.id,
+        category: 'انتقال حساب',
+        reference: 'انتقال وجه',
+        description: `${sourceName} به ${destinationName}${transfer.note ? ` · ${transfer.note}` : ''}`,
+        amount: transfer.amount,
+        time: transfer.time,
+      })
+    }
+
+    return entries.sort((first, second) => first.time.localeCompare(second.time))
+  }, [
+    dailyReportCalculated,
+    dailyReportDate,
+    storedSalesInvoices.invoices,
+    storedPurchaseInvoices.invoices,
+    storedReturnSalesInvoices.invoices,
+    storedReturnPurchaseInvoices.invoices,
+    storedMoneyDocuments.documents,
+    storedReceivedChecks.checks,
+    storedPaidChecks.checks,
+    storedAccountTransfers.transfers,
+    storedAccounts.accounts,
+  ])
+  const dailyReportEntriesByCategory = useMemo(() => {
+    const grouped = new Map<DailyReportCategory, DailyReportEntry[]>()
+    for (const entry of dailyReportEntries) {
+      const entries = grouped.get(entry.category) ?? []
+      entries.push(entry)
+      grouped.set(entry.category, entries)
+    }
+    return grouped
+  }, [dailyReportEntries])
+  const dailyReportVisibleEntries = useMemo(() => {
+    const query = dailyReportSearch.trim().toLocaleLowerCase()
+    return dailyReportEntries.filter((entry) => (
+      (dailyReportCategoryFilter === 'همه' || entry.category === dailyReportCategoryFilter)
+      && (!query || `${entry.category} ${entry.reference} ${entry.description} ${entry.amount}`
+        .toLocaleLowerCase()
+        .includes(query))
+    ))
+  }, [dailyReportCategoryFilter, dailyReportEntries, dailyReportSearch])
+  const dailyReportDataError = storedSalesInvoices.error
+    || storedPurchaseInvoices.error
+    || storedReturnSalesInvoices.error
+    || storedReturnPurchaseInvoices.error
+    || storedMoneyDocuments.error
+    || storedReceivedChecks.error
+    || storedPaidChecks.error
+    || storedAccountTransfers.error
+    || (storedAccountTransfers.transfers.some((transfer) => transfer.date === dailyReportDate)
+      ? storedAccounts.error
+      : '')
+  const calculateSingleInvoiceProfit = () => {
+    if (storedSalesInvoices.error || storedInventoryRecords.error) {
+      setSingleInvoiceProfitError(storedSalesInvoices.error || storedInventoryRecords.error)
+      setSingleInvoiceProfitCalculatedId('')
+      return
+    }
+    if (!selectedSingleInvoice) {
+      setSingleInvoiceProfitError('برای محاسبه، یک فاکتور فروش انتخاب کنید.')
+      setSingleInvoiceProfitCalculatedId('')
+      return
+    }
+    setSingleInvoiceProfitError('')
+    setSingleInvoiceProfitCalculatedId(selectedSingleInvoice.id)
+  }
+  const openDailyReportDatePicker = () => {
+    const selectedDate = new Date(`${dailyReportDate}T12:00:00Z`)
+    const validDate = Number.isNaN(selectedDate.getTime()) ? normalizeUtcDate(new Date()) : selectedDate
+    setDailyReportDraftDate(validDate)
+    setDailyReportVisibleMonth(validDate)
+    setDailyReportDatePickerOpen(true)
+  }
+  const saveDailyReportDate = () => {
+    setDailyReportDate(getIranDateValue(dailyReportDraftDate))
+    setDailyReportCalculated(false)
+    setDailyReportExpandedCategory(null)
+    setDailyReportSearch('')
+    setDailyReportCategoryFilter('همه')
+    setDailyReportError('')
+    setDailyReportDatePickerOpen(false)
+  }
+  const moveDailyReportCalendarMonth = (direction: -1 | 1) => {
+    setDailyReportVisibleMonth((month) =>
+      getAdjacentCalendarMonthDate(month, dailyReportCalendar, direction))
+  }
+  const selectDailyReportCalendar = (calendar: CalendarSystem) => {
+    setDailyReportCalendar(calendar)
+    setDailyReportVisibleMonth(dailyReportDraftDate)
+  }
+  const calculateDailyReport = () => {
+    if (dailyReportDataError) {
+      setDailyReportError(dailyReportDataError)
+      setDailyReportCalculated(false)
+      return
+    }
+    setDailyReportError('')
+    setDailyReportExpandedCategory(null)
+    setDailyReportCalculated(true)
+  }
+  const resetInvoiceProfitResult = () => {
+    setInvoiceProfitCalculated(false)
+    setInvoiceProfitError('')
+  }
+  const setInvoiceProfitPreset = (preset: QuickDatePreset) => {
+    const range = getQuickDateRange(preset, now)
+    setInvoiceProfitStartDate(range.startDate)
+    setInvoiceProfitEndDate(range.endDate)
+    resetInvoiceProfitResult()
+  }
+  const calculateInvoiceProfit = () => {
+    if (storedSalesInvoices.error || storedInventoryRecords.error) {
+      setInvoiceProfitError(storedSalesInvoices.error || storedInventoryRecords.error)
+      setInvoiceProfitCalculated(false)
+      return
+    }
+
+    if (invoiceProfitMode === 'date') {
+      if (!invoiceProfitStartDate || !invoiceProfitEndDate) {
+        setInvoiceProfitError('تاریخ شروع و پایان را انتخاب کنید.')
+        setInvoiceProfitCalculated(false)
+        return
+      }
+      if (invoiceProfitStartDate > invoiceProfitEndDate) {
+        setInvoiceProfitError('تاریخ شروع باید قبل از تاریخ پایان باشد.')
+        setInvoiceProfitCalculated(false)
+        return
+      }
+    } else {
+      const startIndex = invoiceProfitOptions.findIndex((invoice) => invoice.id === selectedProfitStartId)
+      const endIndex = invoiceProfitOptions.findIndex((invoice) => invoice.id === selectedProfitEndId)
+      if (startIndex < 0 || endIndex < 0) {
+        setInvoiceProfitError('برای محاسبه، فاکتور شروع و پایان را انتخاب کنید.')
+        setInvoiceProfitCalculated(false)
+        return
+      }
+      if (startIndex > endIndex) {
+        setInvoiceProfitError('فاکتور شروع باید در ترتیب قبل از فاکتور پایان باشد.')
+        setInvoiceProfitCalculated(false)
+        return
+      }
+    }
+
+    setInvoiceProfitError('')
+    setInvoiceProfitCalculated(true)
+  }
+  const openInvoiceProfitDatePicker = (target: 'start' | 'end') => {
+    const dateValue = target === 'start' ? invoiceProfitStartDate : invoiceProfitEndDate
+    const parsedDate = dateValue ? new Date(`${dateValue}T12:00:00Z`) : todayInvoiceDate
+    const selectedDate = Number.isNaN(parsedDate.getTime())
+      ? todayInvoiceDate
+      : normalizeUtcDate(parsedDate)
+    setInvoiceProfitDateTarget(target)
+    setInvoiceProfitDraftDate(selectedDate)
+    setInvoiceProfitVisibleMonth(selectedDate)
+    setInvoiceProfitDatePickerOpen(true)
+  }
+  const moveInvoiceProfitCalendarMonth = (direction: -1 | 1) => {
+    setInvoiceProfitVisibleMonth((month) =>
+      getAdjacentCalendarMonthDate(month, invoiceProfitCalendar, direction))
+  }
+  const selectInvoiceProfitCalendar = (calendar: CalendarSystem) => {
+    setInvoiceProfitCalendar(calendar)
+    setInvoiceProfitVisibleMonth(invoiceProfitDraftDate)
+  }
+  const saveInvoiceProfitDate = () => {
+    const dateValue = normalizeUtcDate(invoiceProfitDraftDate).toISOString().slice(0, 10)
+    if (invoiceProfitDateTarget === 'start') setInvoiceProfitStartDate(dateValue)
+    else setInvoiceProfitEndDate(dateValue)
+    setInvoiceProfitDatePickerOpen(false)
+    resetInvoiceProfitResult()
+  }
+  const resetProfitLossResult = () => {
+    setProfitLossCalculated(false)
+    setProfitLossError('')
+  }
+  const setProfitLossPreset = (preset: QuickDatePreset) => {
+    const range = getQuickDateRange(preset, now)
+    setProfitLossStartDate(range.startDate)
+    setProfitLossEndDate(range.endDate)
+    resetProfitLossResult()
+  }
+  const setPeriodReportPreset = (preset: QuickDatePreset) => {
+    setProfitLossPreset(preset)
+    setPeriodReportCalculated(false)
+    setPeriodReportError('')
+  }
+  const calculatePeriodReport = () => {
+    if (periodReportDataError) {
+      setPeriodReportError(periodReportDataError)
+      setPeriodReportCalculated(false)
+      return
+    }
+    if (!profitLossStartDate || !profitLossEndDate) {
+      setPeriodReportError('تاریخ شروع و پایان را انتخاب کنید.')
+      setPeriodReportCalculated(false)
+      return
+    }
+    if (profitLossStartDate > profitLossEndDate) {
+      setPeriodReportError('تاریخ شروع باید قبل از تاریخ پایان باشد.')
+      setPeriodReportCalculated(false)
+      return
+    }
+    setPeriodReportError('')
+    setPeriodReportCalculated(true)
+  }
+  const calculateProfitLoss = () => {
+    const dataError = storedSalesInvoices.error
+      || storedReturnSalesInvoices.error
+      || storedMoneyDocuments.error
+      || storedInventoryRecords.error
+    if (dataError) {
+      setProfitLossError(dataError)
+      setProfitLossCalculated(false)
+      return
+    }
+    if (!profitLossStartDate || !profitLossEndDate) {
+      setProfitLossError('تاریخ شروع و پایان را انتخاب کنید.')
+      setProfitLossCalculated(false)
+      return
+    }
+    if (profitLossStartDate > profitLossEndDate) {
+      setProfitLossError('تاریخ شروع باید قبل از تاریخ پایان باشد.')
+      setProfitLossCalculated(false)
+      return
+    }
+    setProfitLossError('')
+    setProfitLossCalculated(true)
+  }
+  const openProfitLossDatePicker = (target: 'start' | 'end') => {
+    const dateValue = target === 'start' ? profitLossStartDate : profitLossEndDate
+    const parsedDate = dateValue ? new Date(`${dateValue}T12:00:00Z`) : todayInvoiceDate
+    const selectedDate = Number.isNaN(parsedDate.getTime())
+      ? todayInvoiceDate
+      : normalizeUtcDate(parsedDate)
+    setProfitLossDateTarget(target)
+    setProfitLossDraftDate(selectedDate)
+    setProfitLossVisibleMonth(selectedDate)
+    setProfitLossDatePickerOpen(true)
+  }
+  const moveProfitLossCalendarMonth = (direction: -1 | 1) => {
+    setProfitLossVisibleMonth((month) =>
+      getAdjacentCalendarMonthDate(month, profitLossCalendar, direction))
+  }
+  const selectProfitLossCalendar = (calendar: CalendarSystem) => {
+    setProfitLossCalendar(calendar)
+    setProfitLossVisibleMonth(profitLossDraftDate)
+  }
+  const saveProfitLossDate = () => {
+    const dateValue = normalizeUtcDate(profitLossDraftDate).toISOString().slice(0, 10)
+    if (profitLossDateTarget === 'start') setProfitLossStartDate(dateValue)
+    else setProfitLossEndDate(dateValue)
+    setProfitLossDatePickerOpen(false)
+    resetProfitLossResult()
+    setPeriodReportCalculated(false)
+    setPeriodReportError('')
+  }
   const purchaseInvoiceListRows = [...storedPurchaseInvoices.invoices]
     .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
     .filter((invoice) => {
@@ -4483,14 +5419,35 @@ function App() {
     setStoreUserFormOpen(true)
   }
 
-  const toggleStoreUserPermissionSection = (section: 'documents' | 'dashboard') => {
-    if (storeUserPermissionSectionOpen === section) {
-      setStoreUserPermissionSectionOpen(null)
-      setStoreUserPermissionModalTop(null)
+  const toggleStoreUserPermissionSection = (section: 'home' | 'documents' | 'dashboard' | 'home-documents' | 'people') => {
+    if (section === 'home') {
+      if (storeUserPermissionSectionOpen !== null) {
+        setStoreUserPermissionSectionOpen(null)
+        setStoreUserPermissionModalTop(null)
+        return
+      }
+
+      setStoreUserPermissionModalTop(storeUserModalRef.current?.getBoundingClientRect().top ?? null)
+      setStoreUserPermissionSectionOpen('home')
       return
     }
 
-    setStoreUserPermissionModalTop(storeUserModalRef.current?.getBoundingClientRect().top ?? null)
+    if (section === 'people') {
+      if (storeUserPermissionSectionOpen === 'people') {
+        setStoreUserPermissionSectionOpen(null)
+        setStoreUserPermissionModalTop(null)
+      } else {
+        setStoreUserPermissionModalTop(storeUserModalRef.current?.getBoundingClientRect().top ?? null)
+        setStoreUserPermissionSectionOpen('people')
+      }
+      return
+    }
+
+    if (storeUserPermissionSectionOpen === section) {
+      setStoreUserPermissionSectionOpen('home')
+      return
+    }
+
     setStoreUserPermissionSectionOpen(section)
   }
 
@@ -5296,6 +6253,14 @@ function App() {
       dashboardPermissions: {
         ...emptyStoreUserDashboardPermissions,
         ...storeUserFields.dashboardPermissions,
+      },
+      homeDocumentPermissions: {
+        ...emptyStoreUserHomeDocumentPermissions,
+        ...storeUserFields.homeDocumentPermissions,
+      },
+      peoplePermissions: {
+        ...emptyStoreUserPeoplePermissions,
+        ...storeUserFields.peoplePermissions,
       },
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     }
@@ -10078,74 +11043,173 @@ function App() {
                             role="tabpanel"
                             aria-labelledby="settings-user-permissions-tab"
                           >
-                            <section className="settings-user-permission-section" aria-labelledby="settings-user-dashboard-heading">
+                            <section className="settings-user-permission-section" aria-labelledby="settings-user-home-heading">
                               <h3>
                                 <button
                                   className="settings-user-permission-section-toggle"
-                                  id="settings-user-dashboard-heading"
+                                  id="settings-user-home-heading"
                                   type="button"
-                                  aria-expanded={storeUserPermissionSectionOpen === 'dashboard'}
-                                  aria-controls="settings-user-dashboard-list"
-                                  onClick={() => toggleStoreUserPermissionSection('dashboard')}
+                                  aria-expanded={storeUserPermissionSectionOpen !== null && storeUserPermissionSectionOpen !== 'people'}
+                                  aria-controls="settings-user-home-permissions"
+                                  onClick={() => toggleStoreUserPermissionSection('home')}
                                 >
-                                  <span>داشبورد</span>
+                                  <span>خانه</span>
                                   <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
                                 </button>
                               </h3>
-                              <div className="settings-user-permission-list" id="settings-user-dashboard-list" hidden={storeUserPermissionSectionOpen !== 'dashboard'}>
-                                {quickLinks.map(({ key, label }) => (
-                                  <div className="settings-user-permission-row" key={key}>
-                                    <span id={`settings-user-dashboard-${key}`}>{label}</span>
-                                    <label className="security-switch">
-                                      <input
-                                        type="checkbox"
-                                        role="switch"
-                                        aria-labelledby={`settings-user-dashboard-${key}`}
-                                        checked={storeUserFields.dashboardPermissions?.[key] ?? false}
-                                        onChange={(event) => setStoreUserFields({
-                                          ...storeUserFields,
-                                          dashboardPermissions: {
-                                            ...emptyStoreUserDashboardPermissions,
-                                            ...storeUserFields.dashboardPermissions,
-                                            [key]: event.target.checked,
-                                          },
-                                        })}
-                                      />
-                                      <span className="security-switch-track" aria-hidden="true" />
-                                    </label>
+                              <div
+                                className="settings-user-permission-subsections"
+                                id="settings-user-home-permissions"
+                                hidden={storeUserPermissionSectionOpen === null}
+                              >
+                                <section className="settings-user-permission-section" aria-labelledby="settings-user-dashboard-heading">
+                                  <h4>
+                                    <button
+                                      className="settings-user-permission-section-toggle"
+                                      id="settings-user-dashboard-heading"
+                                      type="button"
+                                      aria-expanded={storeUserPermissionSectionOpen === 'dashboard'}
+                                      aria-controls="settings-user-dashboard-list"
+                                      onClick={() => toggleStoreUserPermissionSection('dashboard')}
+                                    >
+                                      <span>داشبورد</span>
+                                      <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
+                                    </button>
+                                  </h4>
+                                  <div className="settings-user-permission-list" id="settings-user-dashboard-list" hidden={storeUserPermissionSectionOpen !== 'dashboard'}>
+                                    {quickLinks.map(({ key, label }) => (
+                                      <div className="settings-user-permission-row" key={key}>
+                                        <span id={`settings-user-dashboard-${key}`}>{label}</span>
+                                        <label className="security-switch">
+                                          <input
+                                            type="checkbox"
+                                            role="switch"
+                                            aria-labelledby={`settings-user-dashboard-${key}`}
+                                            checked={storeUserFields.dashboardPermissions?.[key] ?? false}
+                                            onChange={(event) => setStoreUserFields({
+                                              ...storeUserFields,
+                                              dashboardPermissions: {
+                                                ...emptyStoreUserDashboardPermissions,
+                                                ...storeUserFields.dashboardPermissions,
+                                                [key]: event.target.checked,
+                                              },
+                                            })}
+                                          />
+                                          <span className="security-switch-track" aria-hidden="true" />
+                                        </label>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
+                                </section>
+                                <section className="settings-user-permission-section" aria-labelledby="settings-user-documents-heading">
+                                  <h4>
+                                    <button
+                                      className="settings-user-permission-section-toggle"
+                                      id="settings-user-documents-heading"
+                                      type="button"
+                                      aria-expanded={storeUserPermissionSectionOpen === 'documents'}
+                                      aria-controls="settings-user-documents-list"
+                                      onClick={() => toggleStoreUserPermissionSection('documents')}
+                                    >
+                                      <span>ثبت سند</span>
+                                      <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
+                                    </button>
+                                  </h4>
+                                  <div className="settings-user-permission-list" id="settings-user-documents-list" hidden={storeUserPermissionSectionOpen !== 'documents'}>
+                                    {storeUserDocumentPermissionItems.map(({ key, label }) => (
+                                      <div className="settings-user-permission-row" key={key}>
+                                        <span id={`settings-user-document-${key}`}>{label}</span>
+                                        <label className="security-switch">
+                                          <input
+                                            type="checkbox"
+                                            role="switch"
+                                            aria-labelledby={`settings-user-document-${key}`}
+                                            checked={storeUserFields.documentPermissions?.[key] ?? false}
+                                            onChange={(event) => setStoreUserFields({
+                                              ...storeUserFields,
+                                              documentPermissions: {
+                                                ...emptyStoreUserDocumentPermissions,
+                                                ...storeUserFields.documentPermissions,
+                                                [key]: event.target.checked,
+                                              },
+                                            })}
+                                          />
+                                          <span className="security-switch-track" aria-hidden="true" />
+                                        </label>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </section>
+                                <section className="settings-user-permission-section" aria-labelledby="settings-user-home-documents-heading">
+                                  <h4>
+                                    <button
+                                      className="settings-user-permission-section-toggle"
+                                      id="settings-user-home-documents-heading"
+                                      type="button"
+                                      aria-expanded={storeUserPermissionSectionOpen === 'home-documents'}
+                                      aria-controls="settings-user-home-documents-list"
+                                      onClick={() => toggleStoreUserPermissionSection('home-documents')}
+                                    >
+                                      <span>اسناد</span>
+                                      <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
+                                    </button>
+                                  </h4>
+                                  <div className="settings-user-permission-list" id="settings-user-home-documents-list" hidden={storeUserPermissionSectionOpen !== 'home-documents'}>
+                                    {documents.map(({ permissionKey, label }) => (
+                                      <div className="settings-user-permission-row" key={permissionKey}>
+                                        <span id={`settings-user-home-document-${permissionKey}`}>{label}</span>
+                                        <label className="security-switch">
+                                          <input
+                                            type="checkbox"
+                                            role="switch"
+                                            aria-labelledby={`settings-user-home-document-${permissionKey}`}
+                                            checked={storeUserFields.homeDocumentPermissions?.[permissionKey] ?? false}
+                                            onChange={(event) => setStoreUserFields({
+                                              ...storeUserFields,
+                                              homeDocumentPermissions: {
+                                                ...emptyStoreUserHomeDocumentPermissions,
+                                                ...storeUserFields.homeDocumentPermissions,
+                                                [permissionKey]: event.target.checked,
+                                              },
+                                            })}
+                                          />
+                                          <span className="security-switch-track" aria-hidden="true" />
+                                        </label>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </section>
                               </div>
                             </section>
-                            <section className="settings-user-permission-section" aria-labelledby="settings-user-documents-heading">
+                            <section className="settings-user-permission-section" aria-labelledby="settings-user-people-heading">
                               <h3>
                                 <button
                                   className="settings-user-permission-section-toggle"
-                                  id="settings-user-documents-heading"
+                                  id="settings-user-people-heading"
                                   type="button"
-                                  aria-expanded={storeUserPermissionSectionOpen === 'documents'}
-                                  aria-controls="settings-user-documents-list"
-                                  onClick={() => toggleStoreUserPermissionSection('documents')}
+                                  aria-expanded={storeUserPermissionSectionOpen === 'people'}
+                                  aria-controls="settings-user-people-list"
+                                  onClick={() => toggleStoreUserPermissionSection('people')}
                                 >
-                                  <span>ثبت سند</span>
+                                  <span>اشخاص</span>
                                   <span className="dropdown-chevron settings-user-permission-chevron" aria-hidden="true" />
                                 </button>
                               </h3>
-                              <div className="settings-user-permission-list" id="settings-user-documents-list" hidden={storeUserPermissionSectionOpen !== 'documents'}>
-                                {storeUserDocumentPermissionItems.map(({ key, label }) => (
+                              <div className="settings-user-permission-list" id="settings-user-people-list" hidden={storeUserPermissionSectionOpen !== 'people'}>
+                                {storeUserPeoplePermissionItems.map(({ key, label }) => (
                                   <div className="settings-user-permission-row" key={key}>
-                                    <span id={`settings-user-document-${key}`}>{label}</span>
+                                    <span id={`settings-user-people-${key}`}>{label}</span>
                                     <label className="security-switch">
                                       <input
                                         type="checkbox"
                                         role="switch"
-                                        aria-labelledby={`settings-user-document-${key}`}
-                                        checked={storeUserFields.documentPermissions?.[key] ?? false}
+                                        aria-labelledby={`settings-user-people-${key}`}
+                                        checked={storeUserFields.peoplePermissions?.[key] ?? false}
                                         onChange={(event) => setStoreUserFields({
                                           ...storeUserFields,
-                                          documentPermissions: {
-                                            ...emptyStoreUserDocumentPermissions,
-                                            ...storeUserFields.documentPermissions,
+                                          peoplePermissions: {
+                                            ...emptyStoreUserPeoplePermissions,
+                                            ...storeUserFields.peoplePermissions,
                                             [key]: event.target.checked,
                                           },
                                         })}
@@ -17629,6 +18693,1883 @@ function App() {
               </div>
             )}
           </div>
+        ) : activeTab === 'گزارش روزانه' || activeTab === 'ریز گزارش روزانه' ? (
+          <div className="daily-report-page">
+            <header className="daily-report-hero">
+              <button
+                className="daily-report-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="daily-report-hero-content">
+                <span className="daily-report-hero-icon">
+                  <Icon name={activeTab === 'ریز گزارش روزانه' ? 'receive' : 'chart'} />
+                </span>
+                <div>
+                  <span>{activeTab === 'ریز گزارش روزانه' ? 'بررسی تک‌تک گردش‌های مالی' : 'مرور رویدادهای ثبت‌شده'}</span>
+                  <h1>{activeTab === 'ریز گزارش روزانه' ? 'ریز گزارش روزانه' : 'گزارش روزانه'}</h1>
+                  <p>{activeTab === 'ریز گزارش روزانه'
+                    ? 'فهرست کامل اسناد و گردش‌های ثبت‌شده را به تفکیک ساعت ببین.'
+                    : 'اسناد مالی و گردش‌های ثبت‌شده را برای یک روز ببین.'}</p>
+                </div>
+              </div>
+              <span className="daily-report-hero-mark" aria-hidden="true">روز</span>
+            </header>
+
+            <section className="daily-report-filter" aria-label="انتخاب تاریخ گزارش روزانه">
+              <div>
+                <span className="daily-report-filter-icon"><Icon name="calendar" /></span>
+                <label htmlFor="daily-report-date">تاریخ گزارش</label>
+                <button
+                  id="daily-report-date"
+                  className="daily-report-date-trigger"
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={openDailyReportDatePicker}
+                >
+                  {formatCalendarDate(new Date(`${dailyReportDate}T12:00:00Z`), dailyReportCalendar)}
+                  <span aria-hidden="true">▾</span>
+                </button>
+              </div>
+              <button
+                className="daily-report-run"
+                type="button"
+                onClick={calculateDailyReport}
+              >
+                <Icon name="chart" />
+                گزارش‌گیری
+              </button>
+              {dailyReportError && <p className="daily-report-error" role="alert">{dailyReportError}</p>}
+            </section>
+
+            {dailyReportCalculated && !dailyReportError && (
+              <>
+                <section className="daily-report-summary" aria-label="خلاصه گزارش روزانه">
+                  <div className="daily-report-summary-heading">
+                    <span className="daily-report-summary-icon"><Icon name="chart" /></span>
+                    <div>
+                      <span>{activeTab === 'ریز گزارش روزانه' ? 'نمایش جزئیات' : 'خلاصهٔ روز'}</span>
+                      <h2>{activeTab === 'ریز گزارش روزانه' ? 'گردش‌های مالی روز' : 'مجموع گزارش روزانه'}</h2>
+                      <p>{formatCalendarDate(new Date(`${dailyReportDate}T12:00:00Z`), dailyReportCalendar)}</p>
+                    </div>
+                  </div>
+                  <div className="daily-report-event-count">
+                    <strong>{formatPersonBalance(dailyReportEntries.length)}</strong>
+                    <span>رویداد و سند</span>
+                  </div>
+                </section>
+
+                {activeTab === 'ریز گزارش روزانه' ? (
+                  dailyReportEntries.length ? (
+                    <section className="daily-report-detail" aria-label="ریز گردش‌های روزانه">
+                      <div className="daily-report-detail-heading">
+                        <div>
+                          <span className="daily-report-detail-eyebrow">دفتر رویدادهای روز</span>
+                          <h2>همهٔ جزئیات</h2>
+                          <p>رویدادها بر اساس زمان ثبت مرتب شده‌اند.</p>
+                        </div>
+                        <span className="daily-report-detail-count">
+                          {formatPersonBalance(dailyReportEntries.length)} <small>رویداد</small>
+                        </span>
+                      </div>
+
+                      <div className="daily-report-detail-tools">
+                        <label className="daily-report-search">
+                          <span aria-hidden="true">⌕</span>
+                          <input
+                            type="search"
+                            value={dailyReportSearch}
+                            onChange={(event) => setDailyReportSearch(event.target.value)}
+                            placeholder="جست‌وجو در شرح یا شماره سند"
+                            aria-label="جست‌وجو در ریز گزارش"
+                          />
+                          {dailyReportSearch && (
+                            <button
+                              type="button"
+                              aria-label="پاک کردن جست‌وجو"
+                              onClick={() => setDailyReportSearch('')}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </label>
+                        <label className="daily-report-category-select">
+                          <span>نوع رویداد</span>
+                          <select
+                            value={dailyReportCategoryFilter}
+                            onChange={(event) => setDailyReportCategoryFilter(event.target.value as DailyReportCategory | 'همه')}
+                            aria-label="فیلتر بر اساس نوع رویداد"
+                          >
+                            <option value="همه">همهٔ دسته‌ها</option>
+                            {dailyReportCategories
+                              .filter((category) => dailyReportEntriesByCategory.has(category.id))
+                              .map((category) => (
+                                <option key={category.id} value={category.id}>{category.id}</option>
+                              ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="daily-report-detail-result-count" aria-live="polite">
+                        نمایش {formatPersonBalance(dailyReportVisibleEntries.length)} از {formatPersonBalance(dailyReportEntries.length)} رویداد
+                      </div>
+
+                      {dailyReportVisibleEntries.length ? (
+                        <div className="daily-report-timeline">
+                          {dailyReportVisibleEntries.map((entry, index) => {
+                            const category = dailyReportCategories.find((item) => item.id === entry.category)
+
+                            return (
+                              <article className="daily-report-timeline-entry" key={entry.id}>
+                                <div className="daily-report-timeline-time">
+                                  <time>{entry.time}</time>
+                                  {index < dailyReportVisibleEntries.length - 1 && <span aria-hidden="true" />}
+                                </div>
+                                <div className={`daily-report-timeline-icon ${category?.tone ?? 'account'}`}>
+                                  <Icon name={category?.icon ?? 'chart'} />
+                                </div>
+                                <div className="daily-report-timeline-content">
+                                  <div className="daily-report-timeline-title">
+                                    <strong>{entry.description}</strong>
+                                    <span className={`daily-report-kind ${category?.tone ?? 'account'}`}>{entry.category}</span>
+                                  </div>
+                                  <div className="daily-report-timeline-meta">
+                                    <span>شمارهٔ {entry.reference}</span>
+                                    <span>{formatCalendarDate(new Date(`${dailyReportDate}T12:00:00Z`), dailyReportCalendar)}</span>
+                                  </div>
+                                </div>
+                                <strong className="daily-report-timeline-amount">
+                                  {formatPersonBalance(entry.amount)} <small>ریال</small>
+                                </strong>
+                              </article>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="daily-report-filter-empty" role="status">
+                          <span aria-hidden="true">⌕</span>
+                          <strong>موردی با این جست‌وجو پیدا نشد</strong>
+                          <p>عبارت جست‌وجو یا نوع رویداد را تغییر بده.</p>
+                        </div>
+                      )}
+
+                      <p className="daily-report-note">
+                        رویدادهای فاکتور و دریافت یا پرداخت مرتبط با آن به‌صورت جداگانه نمایش داده می‌شوند.
+                        پیش‌فاکتور و انتقال مستقل اشخاص در نسخهٔ فعلی سابقهٔ ذخیره‌شده ندارند.
+                      </p>
+                    </section>
+                  ) : (
+                    <section className="daily-report-empty">
+                      <span aria-hidden="true"><Icon name="calendar" /></span>
+                      <h2>رویدادی برای این روز پیدا نشد</h2>
+                      <p>برای تاریخ انتخاب‌شده سند یا گردش مالی ثبت نشده است.</p>
+                    </section>
+                  )
+                ) : dailyReportEntries.length ? (
+                  <section className="daily-report-breakdown" aria-label="دسته‌بندی رویدادهای روز">
+                    <div className="daily-report-section-heading">
+                      <div>
+                        <h2>گردش‌های ثبت‌شده</h2>
+                        <p>برای مشاهدهٔ ریز هر دسته، کارت آن را انتخاب کن.</p>
+                      </div>
+                      <span>{formatPersonBalance(dailyReportCategories.length)} دسته</span>
+                    </div>
+                    <div className="daily-report-category-grid">
+                      {dailyReportCategories.map((category) => {
+                        const entries = dailyReportEntriesByCategory.get(category.id) ?? []
+                        const total = entries.reduce((sum, entry) => sum + entry.amount, 0)
+                        const expanded = dailyReportExpandedCategory === category.id
+
+                        return (
+                          <article
+                            className={`daily-report-category${entries.length ? '' : ' empty'}${category.supported === false ? ' unsupported' : ''}${expanded ? ' expanded' : ''}`}
+                            key={category.id}
+                          >
+                            <button
+                              className={`daily-report-category-trigger ${category.tone}`}
+                              type="button"
+                              aria-expanded={expanded}
+                              disabled={!entries.length}
+                              onClick={() => setDailyReportExpandedCategory(expanded ? null : category.id)}
+                            >
+                              <span className="daily-report-category-icon"><Icon name={category.icon} /></span>
+                              <span className="daily-report-category-copy">
+                                <strong>{category.id}</strong>
+                                <small>{category.supported === false
+                                  ? 'در نسخهٔ فعلی ذخیره نمی‌شود'
+                                  : `${formatPersonBalance(entries.length)} مورد`}</small>
+                              </span>
+                              <span className="daily-report-category-total">
+                                <strong>{category.supported === false ? '—' : formatPersonBalance(total)}</strong>
+                                <small>{category.supported === false ? '' : 'ریال'}</small>
+                              </span>
+                              <span className="daily-report-category-chevron" aria-hidden="true">
+                                {expanded ? '⌃' : '⌄'}
+                              </span>
+                            </button>
+                            {expanded && (
+                              <div className="daily-report-entry-list">
+                                {entries.map((entry) => (
+                                  <div className="daily-report-entry" key={entry.id}>
+                                    <div>
+                                      <strong>{entry.reference}</strong>
+                                      <span>{entry.description}</span>
+                                    </div>
+                                    <time>{entry.time}</time>
+                                    <strong className="daily-report-entry-amount">
+                                      {formatPersonBalance(entry.amount)} <small>ریال</small>
+                                    </strong>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })}
+                    </div>
+                    <p className="daily-report-note">
+                      مبالغ هر دسته جداگانه محاسبه شده‌اند؛ مبلغ فاکتور و دریافت یا پرداخت مرتبط با آن، رویدادهای مستقل هستند.
+                      پیش‌فاکتور و انتقال مستقل اشخاص در نسخهٔ فعلی سابقهٔ ذخیره‌شده ندارند.
+                    </p>
+                  </section>
+                ) : (
+                  <section className="daily-report-empty">
+                    <span aria-hidden="true"><Icon name="calendar" /></span>
+                    <h2>رویدادی برای این روز پیدا نشد</h2>
+                    <p>برای تاریخ انتخاب‌شده سند یا گردش مالی ثبت نشده است.</p>
+                  </section>
+                )}
+              </>
+            )}
+
+            {dailyReportDatePickerOpen && (
+              <div
+                className="sales-invoice-date-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setDailyReportDatePickerOpen(false)
+                }}
+              >
+                <section
+                  className="sales-invoice-date-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="daily-report-date-title"
+                >
+                  <header className="sales-invoice-date-heading">
+                    <div>
+                      <span>{activeTab === 'ریز گزارش روزانه' ? 'ریز گزارش روزانه' : 'گزارش روزانه'}</span>
+                      <h2 id="daily-report-date-title">انتخاب تاریخ</h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بستن انتخاب تاریخ"
+                      onClick={() => setDailyReportDatePickerOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </header>
+
+                  <div className="sales-invoice-date-previews" aria-label="تاریخ در سه تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <div key={calendar.id}>
+                        <span>{calendar.label}</span>
+                        <strong>{formatCalendarDate(dailyReportDraftDate, calendar.id)}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-tabs" role="tablist" aria-label="نوع تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <button
+                        key={calendar.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={dailyReportCalendar === calendar.id}
+                        className={dailyReportCalendar === calendar.id ? 'active' : ''}
+                        onClick={() => selectDailyReportCalendar(calendar.id)}
+                      >
+                        {calendar.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-month">
+                    <button
+                      type="button"
+                      aria-label="ماه قبل"
+                      onClick={() => moveDailyReportCalendarMonth(-1)}
+                    >
+                      ‹
+                    </button>
+                    <strong>
+                      {new Intl.DateTimeFormat(`fa-IR-u-ca-${dailyReportCalendar}-nu-arabext`, {
+                        month: 'long',
+                        year: 'numeric',
+                        timeZone: 'UTC',
+                      }).format(dailyReportVisibleMonth)}
+                    </strong>
+                    <button
+                      type="button"
+                      aria-label="ماه بعد"
+                      onClick={() => moveDailyReportCalendarMonth(1)}
+                    >
+                      ›
+                    </button>
+                  </div>
+
+                  <div className="sales-invoice-calendar-grid" role="grid" aria-label="روزهای ماه">
+                    {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((day, index) => (
+                      <span className="weekday" role="columnheader" key={`${day}-${index}`}>{day}</span>
+                    ))}
+                    {(() => {
+                      const dates = getCalendarMonthDates(dailyReportVisibleMonth, dailyReportCalendar)
+                      const firstDayOffset = (dates[0].getUTCDay() + 1) % 7
+                      const today = todayInvoiceDate.toISOString().slice(0, 10)
+                      const selectedDate = normalizeUtcDate(dailyReportDraftDate).toISOString().slice(0, 10)
+
+                      return (
+                        <>
+                          {Array.from({ length: firstDayOffset }, (_, index) => (
+                            <span className="empty-day" role="gridcell" key={`empty-${index}`} />
+                          ))}
+                          {dates.map((date) => {
+                            const dateKey = date.toISOString().slice(0, 10)
+                            const isSelected = dateKey === selectedDate
+
+                            return (
+                              <button
+                                className={[
+                                  dateKey === today ? 'today' : '',
+                                  isSelected ? 'selected' : '',
+                                ].filter(Boolean).join(' ')}
+                                type="button"
+                                role="gridcell"
+                                aria-label={formatCalendarDate(date, dailyReportCalendar, true)}
+                                aria-pressed={isSelected}
+                                key={dateKey}
+                                onClick={() => setDailyReportDraftDate(date)}
+                              >
+                                {new Intl.DateTimeFormat(`fa-IR-u-ca-${dailyReportCalendar}-nu-arabext`, {
+                                  day: 'numeric',
+                                  timeZone: 'UTC',
+                                }).format(date)}
+                              </button>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="sales-invoice-date-actions">
+                    <button
+                      className="today-action"
+                      type="button"
+                      onClick={() => {
+                        setDailyReportDraftDate(todayInvoiceDate)
+                        setDailyReportVisibleMonth(todayInvoiceDate)
+                      }}
+                    >
+                      امروز
+                    </button>
+                    <div>
+                      <button type="button" onClick={() => setDailyReportDatePickerOpen(false)}>انصراف</button>
+                      <button className="confirm" type="button" onClick={saveDailyReportDate}>تأیید تاریخ</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'محاسبه سود فاکتور' ? (
+          <div className="single-invoice-profit-page">
+            <header className="single-invoice-profit-hero">
+              <button
+                className="single-invoice-profit-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="single-invoice-profit-hero-content">
+                <span className="single-invoice-profit-hero-icon"><Icon name="chart" /></span>
+                <div>
+                  <span>تحلیل یک فاکتور فروش</span>
+                  <h1>محاسبه سود فاکتور</h1>
+                  <p>فاکتور را انتخاب کن تا سود و جزئیات اقلام را ببینی.</p>
+                </div>
+              </div>
+              <span className="single-invoice-profit-hero-mark" aria-hidden="true">٪</span>
+            </header>
+
+            <section className="single-invoice-profit-picker" aria-labelledby="single-invoice-profit-picker-title">
+              <div className="single-invoice-profit-section-heading">
+                <span className="single-invoice-profit-step">۱</span>
+                <div>
+                  <h2 id="single-invoice-profit-picker-title">انتخاب فاکتور</h2>
+                  <p>یک فاکتور فروش را برای محاسبه انتخاب کن.</p>
+                </div>
+              </div>
+
+              {storedSalesInvoices.error || storedInventoryRecords.error ? (
+                <p className="single-invoice-profit-error" role="alert">
+                  {storedSalesInvoices.error || storedInventoryRecords.error}
+                </p>
+              ) : invoiceProfitOptions.length ? (
+                <>
+                  <label className="single-invoice-profit-select">
+                    <span>فاکتور فروش</span>
+                    <select
+                      value={selectedSingleInvoiceId}
+                      onChange={(event) => {
+                        setSingleInvoiceProfitSelectedId(event.target.value)
+                        setSingleInvoiceProfitCalculatedId('')
+                        setSingleInvoiceProfitError('')
+                      }}
+                    >
+                      {invoiceProfitOptions.map((invoice) => (
+                        <option key={invoice.id} value={invoice.id}>
+                          {invoice.number} · {invoice.buyerName} · {formatCalendarDate(
+                            new Date(`${invoice.date}T12:00:00Z`),
+                            invoice.calendar,
+                          )}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {selectedSingleInvoice && (
+                    <div className="single-invoice-profit-selected">
+                      <span className="single-invoice-profit-selected-icon"><Icon name="cart" /></span>
+                      <div>
+                        <small>فاکتور {selectedSingleInvoice.number}</small>
+                        <strong>{selectedSingleInvoice.buyerName}</strong>
+                      </div>
+                      <span className="single-invoice-profit-selected-date">
+                        {formatCalendarDate(
+                          new Date(`${selectedSingleInvoice.date}T12:00:00Z`),
+                          selectedSingleInvoice.calendar,
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  <button
+                    className="single-invoice-profit-calculate"
+                    type="button"
+                    onClick={calculateSingleInvoiceProfit}
+                  >
+                    <span aria-hidden="true">↗</span>
+                    محاسبه سود فاکتور
+                  </button>
+                  {singleInvoiceProfitError && (
+                    <p className="single-invoice-profit-error" role="alert">{singleInvoiceProfitError}</p>
+                  )}
+                </>
+              ) : (
+                <div className="single-invoice-profit-empty" role="status">
+                  <span aria-hidden="true">▤</span>
+                  <strong>فاکتور فروشی ثبت نشده است</strong>
+                  <p>پس از ثبت فاکتور فروش، آن را از اینجا برای محاسبه انتخاب کن.</p>
+                </div>
+              )}
+            </section>
+
+            {singleInvoiceProfitData && selectedSingleInvoice && (
+              <section className="single-invoice-profit-results" aria-labelledby="single-invoice-profit-results-title">
+                <div className="single-invoice-profit-section-heading">
+                  <span className="single-invoice-profit-step">۲</span>
+                  <div>
+                    <h2 id="single-invoice-profit-results-title">نتیجه محاسبه</h2>
+                    <p>فاکتور {selectedSingleInvoice.number} · {selectedSingleInvoice.buyerName}</p>
+                  </div>
+                </div>
+
+                <div className={`single-invoice-profit-total${singleInvoiceProfitData.summary.profit !== null
+                  && singleInvoiceProfitData.summary.profit < 0 ? ' negative' : ''}`}
+                >
+                  <span>
+                    {singleInvoiceProfitData.summary.profit === null
+                      ? 'سود فاکتور نامشخص'
+                      : singleInvoiceProfitData.summary.profit < 0 ? 'زیان این فاکتور' : 'سود این فاکتور'}
+                  </span>
+                  <strong>
+                    {singleInvoiceProfitData.summary.profit === null
+                      ? 'نامشخص'
+                      : `${formatPersonBalance(Math.abs(singleInvoiceProfitData.summary.profit))} ریال`}
+                  </strong>
+                </div>
+
+                <div className="single-invoice-profit-metrics">
+                  <div>
+                    <span>مبلغ کل فاکتور</span>
+                    <strong>{formatPersonBalance(selectedSingleInvoice.total)} <small>ریال</small></strong>
+                  </div>
+                  <div>
+                    <span>بهای خرید فعلی</span>
+                    <strong>
+                      {singleInvoiceProfitData.summary.missingCostLines
+                        ? 'نامشخص'
+                        : `${formatPersonBalance(singleInvoiceProfitData.summary.cost)} ریال`}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>فروش مؤثر در سود</span>
+                    <strong>{formatPersonBalance(singleInvoiceProfitData.summary.revenue)} <small>ریال</small></strong>
+                  </div>
+                </div>
+
+                {singleInvoiceProfitData.summary.missingCostLines > 0 && (
+                  <p className="single-invoice-profit-warning" role="status">
+                    بهای خرید {formatPersonBalance(singleInvoiceProfitData.summary.missingCostLines)} قلم در فهرست فعلی پیدا نشد؛
+                    بنابراین سود نهایی محاسبه نشده است.
+                  </p>
+                )}
+
+                {singleInvoiceProfitAdjustment !== 0 && (
+                  <p className="single-invoice-profit-adjustment">
+                    تعدیلات مؤثر بر سود:
+                    <strong className={singleInvoiceProfitAdjustment < 0 ? 'negative' : ''}>
+                      {singleInvoiceProfitAdjustment > 0 ? '+' : ''}
+                      {formatPersonBalance(singleInvoiceProfitAdjustment)} ریال
+                    </strong>
+                  </p>
+                )}
+
+                <div className="single-invoice-profit-basis">
+                  سود هر قلم از مبلغ فروش پس از تخفیف منهای بهای خرید فعلی محاسبه شده است. تعدیلاتی که روی سود اثر می‌گذارند در جمع نهایی لحاظ شده‌اند؛ این گزارش بهای خرید تاریخی زمان صدور را نگه نمی‌دارد.
+                </div>
+
+                <div className="single-invoice-profit-table-wrap">
+                  <table className="single-invoice-profit-table">
+                    <thead>
+                      <tr>
+                        <th>شرح کالا یا خدمت</th>
+                        <th>تعداد</th>
+                        <th>فروش</th>
+                        <th>بهای خرید</th>
+                        <th>سود قلم</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {singleInvoiceProfitData.lines.map(({ line, cost, profit }, index) => (
+                        <tr key={`${line.itemId}-${index}`}>
+                          <td data-label="شرح">{line.description}</td>
+                          <td data-label="تعداد">{formatPersonBalance(line.quantity)} {line.unit}</td>
+                          <td data-label="فروش">{formatPersonBalance(line.total)} ریال</td>
+                          <td data-label="بهای خرید">{cost === null ? 'نامشخص' : `${formatPersonBalance(cost)} ریال`}</td>
+                          <td
+                            className={profit !== null && profit < 0 ? 'negative' : ''}
+                            data-label="سود قلم"
+                          >
+                            {profit === null ? 'نامشخص' : `${formatPersonBalance(profit)} ریال`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </div>
+        ) : activeTab === 'گزارش دارایی' ? (
+          <div className="asset-report-page">
+            <header className="asset-report-hero">
+              <button
+                className="asset-report-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="asset-report-hero-content">
+                <span className="asset-report-hero-icon"><Icon name="accounts" /></span>
+                <div>
+                  <span>نمای کلی منابع و تعهدات</span>
+                  <h1>گزارش دارایی</h1>
+                  <p>ارزش دارایی‌ها و بدهی‌های فعلی کسب‌وکار</p>
+                </div>
+              </div>
+              <span className="asset-report-hero-mark" aria-hidden="true">◈</span>
+            </header>
+
+            {assetReportError ? (
+              <section className="asset-report-error" role="alert">
+                <span aria-hidden="true">!</span>
+                <div>
+                  <strong>اطلاعات گزارش کامل نیست</strong>
+                  <p>{assetReportError}</p>
+                </div>
+              </section>
+            ) : (
+              <>
+                <section
+                  className={`asset-report-net-card${assetReportNetAssets < 0 ? ' negative' : ''}`}
+                  aria-label="خالص دارایی"
+                >
+                  <div className="asset-report-net-heading">
+                    <span className="asset-report-net-icon"><Icon name="chart" /></span>
+                    <div>
+                      <span>نتیجهٔ خالص</span>
+                      <h2>خالص دارایی</h2>
+                    </div>
+                    <span className="asset-report-live-badge"><i /> به‌روز</span>
+                  </div>
+                  <strong className="asset-report-net-value">
+                    {formatPersonBalance(assetReportNetAssets)} <small>ریال</small>
+                  </strong>
+                  <div className="asset-report-net-equation">
+                    <span>دارایی کل <b>{formatPersonBalance(assetReportTotalAssets)}</b></span>
+                    <span aria-hidden="true">−</span>
+                    <span>بدهی کل <b>{formatPersonBalance(assetReportTotalLiabilities)}</b></span>
+                  </div>
+                </section>
+
+                <section className="asset-report-inventory-card" aria-labelledby="asset-report-inventory-title">
+                  <div className="asset-report-section-heading">
+                    <span className="asset-report-section-icon inventory"><Icon name="inventory" /></span>
+                    <div>
+                      <h2 id="asset-report-inventory-title">ارزش موجودی انبار</h2>
+                      <p>مبنای قیمت‌گذاری را برای محاسبه انتخاب کن.</p>
+                    </div>
+                  </div>
+                  <div className="asset-report-basis-switch" role="group" aria-label="مبنای ارزش‌گذاری موجودی">
+                    <button
+                      type="button"
+                      aria-pressed={assetValuationBasis === 'purchase'}
+                      onClick={() => setAssetValuationBasis('purchase')}
+                    >
+                      قیمت خرید
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={assetValuationBasis === 'sale'}
+                      onClick={() => setAssetValuationBasis('sale')}
+                    >
+                      قیمت فروش
+                    </button>
+                  </div>
+                  <div className="asset-report-inventory-total">
+                    <span>
+                      {assetValuationBasis === 'purchase' ? 'ارزش موجودی با قیمت خرید' : 'ارزش موجودی با قیمت فروش'}
+                    </span>
+                    <strong>{formatPersonBalance(assetReportInventoryValue)} <small>ریال</small></strong>
+                  </div>
+                </section>
+
+                <section className="asset-report-breakdown" aria-labelledby="asset-report-assets-title">
+                  <div className="asset-report-section-heading">
+                    <span className="asset-report-section-icon"><Icon name="receive" /></span>
+                    <div>
+                      <h2 id="asset-report-assets-title">دارایی‌ها</h2>
+                      <p>مبالغی که در اختیار کسب‌وکار یا نزد دیگران است.</p>
+                    </div>
+                    <strong>{formatPersonBalance(assetReportTotalAssets)} <small>ریال</small></strong>
+                  </div>
+                  <div className="asset-report-value-grid">
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon accounts"><Icon name="accounts" /></span>
+                      <div><span>موجودی حساب‌ها</span><small>{formatPersonBalance(storedAccounts.accounts.length)} حساب</small></div>
+                      <strong>{formatPersonBalance(reportAccountsTotal)} <small>ریال</small></strong>
+                    </article>
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon people"><Icon name="people" /></span>
+                      <div>
+                        <span>مطالبات از اشخاص</span>
+                        <small>{formatPersonBalance(allPeople.filter((person) => person.accountStatus === 'بدهکاران').length)} شخص بدهکار</small>
+                      </div>
+                      <strong>{formatPersonBalance(assetReportDebtors)} <small>ریال</small></strong>
+                    </article>
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon inventory"><Icon name="inventory" /></span>
+                      <div>
+                        <span>موجودی انبار</span>
+                        <small>{formatPersonBalance(storedInventoryRecords.items.filter((item) => item.kind !== 'خدمات').length)} قلم کالا</small>
+                      </div>
+                      <strong>{formatPersonBalance(assetReportInventoryValue)} <small>ریال</small></strong>
+                    </article>
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon checks"><Icon name="check" /></span>
+                      <div>
+                        <span>چک‌های دریافتی پاس‌نشده</span>
+                        <small>{formatPersonBalance(storedReceivedChecks.checks.filter((check) => !check.clearedAt).length)} چک</small>
+                      </div>
+                      <strong>{formatPersonBalance(assetReportUnclearedReceivedChecks)} <small>ریال</small></strong>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="asset-report-breakdown liabilities" aria-labelledby="asset-report-liabilities-title">
+                  <div className="asset-report-section-heading">
+                    <span className="asset-report-section-icon liability"><Icon name="pay" /></span>
+                    <div>
+                      <h2 id="asset-report-liabilities-title">بدهی‌ها و تعهدات</h2>
+                      <p>مبالغ پرداختنی و چک‌های در انتظار پاس شدن.</p>
+                    </div>
+                    <strong>{formatPersonBalance(assetReportTotalLiabilities)} <small>ریال</small></strong>
+                  </div>
+                  <div className="asset-report-value-grid">
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon people"><Icon name="people" /></span>
+                      <div>
+                        <span>بدهی به اشخاص</span>
+                        <small>{formatPersonBalance(allPeople.filter((person) => person.accountStatus === 'بستانکاران').length)} شخص بستانکار</small>
+                      </div>
+                      <strong>{formatPersonBalance(assetReportCreditors)} <small>ریال</small></strong>
+                    </article>
+                    <article className="asset-report-value-card">
+                      <span className="asset-report-value-icon checks"><Icon name="pen" /></span>
+                      <div>
+                        <span>چک‌های پرداختی پاس‌نشده</span>
+                        <small>{formatPersonBalance(storedPaidChecks.checks.filter((check) => !check.clearedAt).length)} چک</small>
+                      </div>
+                      <strong>{formatPersonBalance(assetReportUnclearedPaidChecks)} <small>ریال</small></strong>
+                    </article>
+                  </div>
+                </section>
+
+                <p className="asset-report-footnote">
+                  موجودی انبار بر اساس تعداد موجودی هر کالا و قیمت انتخاب‌شده محاسبه می‌شود؛ خدمات در ارزش انبار لحاظ نمی‌شوند.
+                </p>
+              </>
+            )}
+          </div>
+        ) : activeTab === 'مجموع سود فاکتور' ? (
+          <div className="invoice-profit-page">
+            <header className="invoice-profit-hero">
+              <button
+                className="invoice-profit-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="invoice-profit-hero-content">
+                <span className="invoice-profit-hero-icon"><Icon name="chart" /></span>
+                <div>
+                  <span className="invoice-profit-eyebrow">تحلیل عملکرد فروش</span>
+                  <h1>مجموع سود فاکتور</h1>
+                  <p>سود فاکتورهای فروش را در بازهٔ دلخواه بررسی کن.</p>
+                </div>
+              </div>
+              <span className="invoice-profit-hero-mark" aria-hidden="true">٪</span>
+            </header>
+
+            <section className="invoice-profit-filter" aria-labelledby="invoice-profit-filter-title">
+              <div className="invoice-profit-section-heading">
+                <div>
+                  <span className="invoice-profit-step">۱</span>
+                  <div>
+                    <h2 id="invoice-profit-filter-title">محدودهٔ گزارش</h2>
+                    <p>بازه را بر اساس تاریخ یا شمارهٔ فاکتور مشخص کن.</p>
+                  </div>
+                </div>
+                <span className="invoice-profit-filter-icon" aria-hidden="true">⌕</span>
+              </div>
+
+              <div className="invoice-profit-mode" role="group" aria-label="روش انتخاب محدوده">
+                <button
+                  type="button"
+                  aria-pressed={invoiceProfitMode === 'date'}
+                  onClick={() => {
+                    setInvoiceProfitMode('date')
+                    resetInvoiceProfitResult()
+                  }}
+                >
+                  <span aria-hidden="true">▦</span>
+                  بر اساس تاریخ
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={invoiceProfitMode === 'invoice'}
+                  onClick={() => {
+                    setInvoiceProfitMode('invoice')
+                    resetInvoiceProfitResult()
+                  }}
+                >
+                  <span aria-hidden="true">▤</span>
+                  بر اساس فاکتور
+                </button>
+              </div>
+
+              {invoiceProfitMode === 'date' ? (
+                <>
+                  <div className="invoice-profit-date-fields">
+                    <div className="invoice-profit-date-control">
+                      <span>از تاریخ</span>
+                      <button
+                        className="invoice-profit-date-trigger"
+                        type="button"
+                        aria-label={`انتخاب تاریخ شروع، ${formatCalendarDate(
+                          new Date(`${invoiceProfitStartDate}T12:00:00Z`),
+                          invoiceProfitCalendar,
+                        )}`}
+                        onClick={() => openInvoiceProfitDatePicker('start')}
+                      >
+                        <strong>{formatCalendarDate(
+                          new Date(`${invoiceProfitStartDate}T12:00:00Z`),
+                          invoiceProfitCalendar,
+                        )}</strong>
+                        <small>{invoiceCalendars.find((calendar) => (
+                          calendar.id === invoiceProfitCalendar
+                        ))?.label}</small>
+                        <span aria-hidden="true">▦</span>
+                      </button>
+                    </div>
+                    <span className="invoice-profit-range-divider" aria-hidden="true">تا</span>
+                    <div className="invoice-profit-date-control">
+                      <span>تا تاریخ</span>
+                      <button
+                        className="invoice-profit-date-trigger"
+                        type="button"
+                        aria-label={`انتخاب تاریخ پایان، ${formatCalendarDate(
+                          new Date(`${invoiceProfitEndDate}T12:00:00Z`),
+                          invoiceProfitCalendar,
+                        )}`}
+                        onClick={() => openInvoiceProfitDatePicker('end')}
+                      >
+                        <strong>{formatCalendarDate(
+                          new Date(`${invoiceProfitEndDate}T12:00:00Z`),
+                          invoiceProfitCalendar,
+                        )}</strong>
+                        <small>{invoiceCalendars.find((calendar) => (
+                          calendar.id === invoiceProfitCalendar
+                        ))?.label}</small>
+                        <span aria-hidden="true">▦</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="invoice-profit-presets" aria-label="میانبرهای بازهٔ زمانی">
+                    <span>انتخاب سریع</span>
+                    {invoiceProfitPresets.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setInvoiceProfitPreset(preset.id)}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="invoice-profit-invoice-fields">
+                  <label>
+                    <span>فاکتور شروع</span>
+                    <select
+                      value={selectedProfitStartId}
+                      disabled={!invoiceProfitOptions.length}
+                      onChange={(event) => {
+                        setInvoiceProfitStartId(event.target.value)
+                        resetInvoiceProfitResult()
+                      }}
+                    >
+                      {invoiceProfitOptions.map((invoice) => (
+                        <option key={invoice.id} value={invoice.id}>
+                          {invoice.number} · {formatCalendarDate(
+                            new Date(`${invoice.date}T12:00:00Z`),
+                            invoice.calendar,
+                          )}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="invoice-profit-range-divider" aria-hidden="true">تا</span>
+                  <label>
+                    <span>فاکتور پایان</span>
+                    <select
+                      value={selectedProfitEndId}
+                      disabled={!invoiceProfitOptions.length}
+                      onChange={(event) => {
+                        setInvoiceProfitEndId(event.target.value)
+                        resetInvoiceProfitResult()
+                      }}
+                    >
+                      {invoiceProfitOptions.map((invoice) => (
+                        <option key={invoice.id} value={invoice.id}>
+                          {invoice.number} · {formatCalendarDate(
+                            new Date(`${invoice.date}T12:00:00Z`),
+                            invoice.calendar,
+                          )}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!invoiceProfitOptions.length && (
+                    <p className="invoice-profit-empty-options">هنوز فاکتور فروشی ثبت نشده است.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="invoice-profit-filter-footer">
+                <p>با انتخاب «محاسبه»، نتیجهٔ همین محدوده نمایش داده می‌شود.</p>
+                <button
+                  className="invoice-profit-calculate"
+                  type="button"
+                  onClick={calculateInvoiceProfit}
+                >
+                  <span aria-hidden="true">↗</span>
+                  محاسبهٔ سود
+                </button>
+              </div>
+              {invoiceProfitError && (
+                <p className="invoice-profit-error" role="alert">{invoiceProfitError}</p>
+              )}
+            </section>
+
+            {invoiceProfitDatePickerOpen && (
+              <div
+                className="sales-invoice-date-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setInvoiceProfitDatePickerOpen(false)
+                }}
+              >
+                <section
+                  className="sales-invoice-date-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="invoice-profit-date-title"
+                >
+                  <header className="sales-invoice-date-heading">
+                    <div>
+                      <span>محدودهٔ گزارش سود</span>
+                      <h2 id="invoice-profit-date-title">
+                        انتخاب تاریخ {invoiceProfitDateTarget === 'start' ? 'شروع' : 'پایان'}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بستن انتخاب تاریخ"
+                      onClick={() => setInvoiceProfitDatePickerOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </header>
+
+                  <div className="sales-invoice-date-previews" aria-label="تاریخ در سه تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <div key={calendar.id}>
+                        <span>{calendar.label}</span>
+                        <strong>{formatCalendarDate(invoiceProfitDraftDate, calendar.id)}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-tabs" role="tablist" aria-label="نوع تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <button
+                        key={calendar.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={invoiceProfitCalendar === calendar.id}
+                        className={invoiceProfitCalendar === calendar.id ? 'active' : ''}
+                        onClick={() => selectInvoiceProfitCalendar(calendar.id)}
+                      >
+                        {calendar.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-month">
+                    <button
+                      type="button"
+                      aria-label="ماه قبل"
+                      onClick={() => moveInvoiceProfitCalendarMonth(-1)}
+                    >
+                      ‹
+                    </button>
+                    <strong>
+                      {new Intl.DateTimeFormat(`fa-IR-u-ca-${invoiceProfitCalendar}-nu-arabext`, {
+                        month: 'long',
+                        year: 'numeric',
+                        timeZone: 'UTC',
+                      }).format(invoiceProfitVisibleMonth)}
+                    </strong>
+                    <button
+                      type="button"
+                      aria-label="ماه بعد"
+                      onClick={() => moveInvoiceProfitCalendarMonth(1)}
+                    >
+                      ›
+                    </button>
+                  </div>
+
+                  <div className="sales-invoice-calendar-grid" role="grid" aria-label="روزهای ماه">
+                    {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((day, index) => (
+                      <span className="weekday" role="columnheader" key={`${day}-${index}`}>{day}</span>
+                    ))}
+                    {(() => {
+                      const dates = getCalendarMonthDates(invoiceProfitVisibleMonth, invoiceProfitCalendar)
+                      const firstDayOffset = (dates[0].getUTCDay() + 1) % 7
+                      const today = todayInvoiceDate.toISOString().slice(0, 10)
+                      const selectedDate = normalizeUtcDate(invoiceProfitDraftDate).toISOString().slice(0, 10)
+
+                      return (
+                        <>
+                          {Array.from({ length: firstDayOffset }, (_, index) => (
+                            <span className="empty-day" role="gridcell" key={`empty-${index}`} />
+                          ))}
+                          {dates.map((date) => {
+                            const dateKey = date.toISOString().slice(0, 10)
+                            const isSelected = dateKey === selectedDate
+
+                            return (
+                              <button
+                                className={[
+                                  dateKey === today ? 'today' : '',
+                                  isSelected ? 'selected' : '',
+                                ].filter(Boolean).join(' ')}
+                                type="button"
+                                role="gridcell"
+                                aria-label={formatCalendarDate(date, invoiceProfitCalendar, true)}
+                                aria-pressed={isSelected}
+                                key={dateKey}
+                                onClick={() => setInvoiceProfitDraftDate(date)}
+                              >
+                                {new Intl.DateTimeFormat(`fa-IR-u-ca-${invoiceProfitCalendar}-nu-arabext`, {
+                                  day: 'numeric',
+                                  timeZone: 'UTC',
+                                }).format(date)}
+                              </button>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="sales-invoice-date-actions">
+                    <button
+                      className="today-action"
+                      type="button"
+                      onClick={() => {
+                        setInvoiceProfitDraftDate(todayInvoiceDate)
+                        setInvoiceProfitVisibleMonth(todayInvoiceDate)
+                      }}
+                    >
+                      امروز
+                    </button>
+                    <div>
+                      <button type="button" onClick={() => setInvoiceProfitDatePickerOpen(false)}>انصراف</button>
+                      <button className="confirm" type="button" onClick={saveInvoiceProfitDate}>تأیید تاریخ</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {invoiceProfitCalculated && (
+              <section className="invoice-profit-results" aria-labelledby="invoice-profit-results-title">
+                {storedSalesInvoices.error || storedInventoryRecords.error ? (
+                  <p className="invoice-profit-error" role="alert">
+                    {storedSalesInvoices.error || storedInventoryRecords.error}
+                  </p>
+                ) : invoiceProfitRows.length ? (
+                  <>
+                    <div className="invoice-profit-results-heading">
+                      <div>
+                        <span className="invoice-profit-step">۲</span>
+                        <div>
+                          <h2 id="invoice-profit-results-title">نتیجهٔ محاسبه</h2>
+                          <p>
+                            {formatPersonBalance(invoiceProfitCompleteRows.length)} فاکتور در جمع نهایی لحاظ شد
+                          </p>
+                        </div>
+                      </div>
+                      <span className="invoice-profit-result-badge">گزارش فروش</span>
+                    </div>
+
+                    <div className="invoice-profit-total">
+                      <div>
+                        <span>سود کل این محدوده</span>
+                        <strong>{formatPersonBalance(invoiceProfitTotal)} <small>ریال</small></strong>
+                      </div>
+                      <span className="invoice-profit-total-icon" aria-hidden="true">↗</span>
+                    </div>
+
+                    <div className="invoice-profit-metrics">
+                      <div>
+                        <span>فروش محاسبه‌شده</span>
+                        <strong>{formatPersonBalance(invoiceProfitTotalRevenue)} <small>ریال</small></strong>
+                      </div>
+                      <div>
+                        <span>بهای خرید کالاها</span>
+                        <strong>{formatPersonBalance(invoiceProfitTotalCost)} <small>ریال</small></strong>
+                      </div>
+                      <div>
+                        <span>فاکتورهای بررسی‌شده</span>
+                        <strong>{formatPersonBalance(invoiceProfitRows.length)}</strong>
+                      </div>
+                    </div>
+
+                    {invoiceProfitRows.some((row) => row.missingCostLines > 0) && (
+                      <p className="invoice-profit-warning" role="status">
+                        سود {formatPersonBalance(invoiceProfitRows.filter((row) => row.profit === null).length)} فاکتور
+                        به‌دلیل نبودن بعضی کالاها در فهرست فعلی، در جمع نهایی محاسبه نشده است.
+                      </p>
+                    )}
+
+                    <div className="invoice-profit-basis">
+                      مبنا: قیمت خرید فعلی کالا در فهرست موجودی؛ این گزارش بهای خرید تاریخی زمان صدور فاکتور را نشان نمی‌دهد.
+                    </div>
+
+                    <div className="invoice-profit-table-wrap">
+                      <table className="invoice-profit-table">
+                        <thead>
+                          <tr>
+                            <th>فاکتور</th>
+                            <th>تاریخ</th>
+                            <th>خریدار</th>
+                            <th>فروش</th>
+                            <th>بهای خرید</th>
+                            <th>سود</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invoiceProfitRows.map(({ invoice, revenue, cost, profit }) => (
+                            <tr key={invoice.id}>
+                              <td data-label="فاکتور">{invoice.number}</td>
+                              <td data-label="تاریخ">{formatCalendarDate(
+                                new Date(`${invoice.date}T12:00:00Z`),
+                                invoice.calendar,
+                              )}</td>
+                              <td data-label="خریدار">{invoice.buyerName}</td>
+                              <td data-label="فروش">{formatPersonBalance(revenue)} ریال</td>
+                              <td data-label="بهای خرید">{profit === null ? 'نامشخص' : `${formatPersonBalance(cost)} ریال`}</td>
+                              <td className={profit !== null && profit < 0 ? 'negative' : ''} data-label="سود">
+                                {profit === null ? 'نامشخص' : `${formatPersonBalance(profit)} ریال`}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="invoice-profit-empty-result" role="status">
+                    <span aria-hidden="true">⌕</span>
+                    <strong>در این محدوده فاکتوری پیدا نشد</strong>
+                    <p>بازهٔ انتخاب‌شده را تغییر بده و دوباره محاسبه کن.</p>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        ) : activeTab === 'گزارش دوره‌ای' ? (
+          <div className="period-report-page">
+            <header className="period-report-hero">
+              <button
+                className="period-report-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="period-report-hero-content">
+                <span className="period-report-hero-icon"><Icon name="chart" /></span>
+                <div>
+                  <span>مرور عملکرد کسب‌وکار</span>
+                  <h1>گزارش دوره‌ای</h1>
+                  <p>گردش اسناد، فروش و هزینه‌ها را در بازهٔ دلخواه بررسی کن.</p>
+                </div>
+              </div>
+              <span className="period-report-hero-mark" aria-hidden="true">بازه</span>
+            </header>
+
+            <section className="period-report-filter" aria-label="تنظیم بازه گزارش دوره‌ای">
+              <div className="period-report-filter-heading">
+                <span className="period-report-filter-icon"><Icon name="calendar" /></span>
+                <div>
+                  <h2>بازهٔ زمانی گزارش</h2>
+                  <p>تاریخ شروع و پایان را مشخص کن.</p>
+                </div>
+              </div>
+              <div className="period-report-date-fields">
+                <div className="period-report-date-control">
+                  <span>از تاریخ</span>
+                  <button
+                    type="button"
+                    aria-label={`انتخاب تاریخ شروع، ${formatCalendarDate(
+                      new Date(`${profitLossStartDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}`}
+                    onClick={() => openProfitLossDatePicker('start')}
+                  >
+                    <strong>{formatCalendarDate(
+                      new Date(`${profitLossStartDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}</strong>
+                    <small>{invoiceCalendars.find((calendar) => calendar.id === profitLossCalendar)?.label}</small>
+                    <span aria-hidden="true">▦</span>
+                  </button>
+                </div>
+                <span className="period-report-date-divider" aria-hidden="true">تا</span>
+                <div className="period-report-date-control">
+                  <span>تا تاریخ</span>
+                  <button
+                    type="button"
+                    aria-label={`انتخاب تاریخ پایان، ${formatCalendarDate(
+                      new Date(`${profitLossEndDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}`}
+                    onClick={() => openProfitLossDatePicker('end')}
+                  >
+                    <strong>{formatCalendarDate(
+                      new Date(`${profitLossEndDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}</strong>
+                    <small>{invoiceCalendars.find((calendar) => calendar.id === profitLossCalendar)?.label}</small>
+                    <span aria-hidden="true">▦</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="period-report-presets" aria-label="انتخاب سریع بازه">
+                <span>میانبر بازه</span>
+                {invoiceProfitPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setPeriodReportPreset(preset.id)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="period-report-filter-footer">
+                <p>برای مشاهدهٔ نتیجه، بعد از تنظیم بازه گزارش‌گیری را بزن.</p>
+                <button type="button" onClick={calculatePeriodReport}>
+                  <span aria-hidden="true">↗</span>
+                  گزارش‌گیری
+                </button>
+              </div>
+              {periodReportError && <p className="period-report-error" role="alert">{periodReportError}</p>}
+            </section>
+
+            {periodReportCalculated && !periodReportError && (
+              <>
+                <section className="period-report-overview" aria-label="خلاصه عملکرد بازه">
+                  <div className="period-report-overview-heading">
+                    <span className="period-report-overview-icon"><Icon name="chart" /></span>
+                    <div>
+                      <span>خلاصهٔ عملکرد</span>
+                      <h2>وضعیت این بازه</h2>
+                      <p>
+                        {formatCalendarDate(new Date(`${profitLossStartDate}T12:00:00Z`), profitLossCalendar)}
+                        {' تا '}
+                        {formatCalendarDate(new Date(`${profitLossEndDate}T12:00:00Z`), profitLossCalendar)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="period-report-overview-count">
+                    <strong>{formatPersonBalance(periodReportEntries.length)}</strong>
+                    <span>رویداد و سند</span>
+                  </div>
+                </section>
+
+                <section className="period-report-metrics" aria-label="جمع دسته‌های مالی">
+                  {[
+                    { id: 'فروش', label: 'فروش', icon: 'cart', tone: 'sale' },
+                    { id: 'خرید', label: 'خرید', icon: 'box', tone: 'purchase' },
+                    { id: 'برگشت از فروش', label: 'برگشت از فروش', icon: 'returnSale', tone: 'return' },
+                    { id: 'برگشت به خرید', label: 'برگشت به خرید', icon: 'returnPurchase', tone: 'return' },
+                    { id: 'دریافت', label: 'دریافت وجه', icon: 'receive', tone: 'receive' },
+                    { id: 'پرداخت', label: 'پرداخت وجه', icon: 'pay', tone: 'pay' },
+                    { id: 'درآمد', label: 'درآمد', icon: 'income', tone: 'receive' },
+                    { id: 'هزینه', label: 'هزینه', icon: 'expense', tone: 'pay' },
+                  ].map((metric) => {
+                    const total = periodReportTotals.get(metric.id as DailyReportCategory)
+                    return (
+                      <article className={`period-report-metric ${metric.tone}`} key={metric.id}>
+                        <span className="period-report-metric-icon"><Icon name={metric.icon} /></span>
+                        <div>
+                          <span>{metric.label}</span>
+                          <strong>{formatPersonBalance(total?.amount ?? 0)} <small>ریال</small></strong>
+                          <small>{formatPersonBalance(total?.count ?? 0)} سند</small>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </section>
+
+                <section className="period-report-ledger" aria-label="فهرست اسناد در بازه">
+                  <div className="period-report-ledger-heading">
+                    <div>
+                      <span>مرور سند به سند</span>
+                      <h2>گردش‌های ثبت‌شده</h2>
+                    </div>
+                    <span className="period-report-ledger-count">
+                      {formatPersonBalance(periodReportVisibleEntries.length)} مورد
+                    </span>
+                  </div>
+                  <div className="period-report-ledger-tools">
+                    <label className="period-report-search">
+                      <span aria-hidden="true">⌕</span>
+                      <input
+                        type="search"
+                        value={periodReportSearch}
+                        onChange={(event) => setPeriodReportSearch(event.target.value)}
+                        placeholder="جست‌وجو در شماره سند یا شرح"
+                        aria-label="جست‌وجو در اسناد دوره"
+                      />
+                      {periodReportSearch && (
+                        <button
+                          type="button"
+                          aria-label="پاک کردن جست‌وجو"
+                          onClick={() => setPeriodReportSearch('')}
+                        >×</button>
+                      )}
+                    </label>
+                    <label className="period-report-select">
+                      <span>نوع سند</span>
+                      <select
+                        value={periodReportCategoryFilter}
+                        onChange={(event) => setPeriodReportCategoryFilter(event.target.value as DailyReportCategory | 'همه')}
+                        aria-label="فیلتر نوع سند"
+                      >
+                        <option value="همه">همهٔ موارد</option>
+                        {dailyReportCategories
+                          .filter((category) => periodReportTotals.has(category.id))
+                          .map((category) => (
+                            <option key={category.id} value={category.id}>{category.id}</option>
+                          ))}
+                      </select>
+                    </label>
+                  </div>
+                  {periodReportVisibleEntries.length ? (
+                    <div className="period-report-table-wrap">
+                      <table className="period-report-table">
+                        <thead>
+                          <tr>
+                            <th>تاریخ و ساعت</th>
+                            <th>دسته</th>
+                            <th>شرح</th>
+                            <th>شماره</th>
+                            <th>مبلغ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {periodReportVisibleEntries.map((entry) => {
+                            const category = dailyReportCategories.find((item) => item.id === entry.category)
+                            return (
+                              <tr key={entry.id}>
+                                <td data-label="تاریخ و ساعت">
+                                  <span>{formatCalendarDate(new Date(`${entry.date}T12:00:00Z`), profitLossCalendar)}</span>
+                                  <small>{entry.time}</small>
+                                </td>
+                                <td data-label="دسته">
+                                  <span className={`period-report-kind ${category?.tone ?? 'account'}`}>
+                                    {entry.category}
+                                  </span>
+                                </td>
+                                <td data-label="شرح">{entry.description}</td>
+                                <td data-label="شماره">{entry.reference}</td>
+                                <td data-label="مبلغ" className="period-report-amount">
+                                  {formatPersonBalance(entry.amount)} <small>ریال</small>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="period-report-empty" role="status">
+                      <span aria-hidden="true">⌕</span>
+                      <strong>{periodReportEntries.length ? 'سندی با این فیلتر پیدا نشد' : 'در این بازه سندی ثبت نشده است'}</strong>
+                      <p>{periodReportEntries.length
+                        ? 'عبارت جست‌وجو یا نوع سند را تغییر بده.'
+                        : 'بازهٔ زمانی دیگری انتخاب کن یا اسناد ثبت‌شده را بررسی کن.'}</p>
+                    </div>
+                  )}
+                  <p className="period-report-note">
+                    جمع هر دسته مستقل است؛ مبلغ فاکتورها و دریافت یا پرداخت مرتبط با آن‌ها در دسته‌های جداگانه محاسبه می‌شوند.
+                  </p>
+                </section>
+              </>
+            )}
+
+            {profitLossDatePickerOpen && (
+              <div
+                className="sales-invoice-date-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setProfitLossDatePickerOpen(false)
+                }}
+              >
+                <section
+                  className="sales-invoice-date-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="period-report-date-title"
+                >
+                  <header className="sales-invoice-date-heading">
+                    <div>
+                      <span>بازهٔ گزارش دوره‌ای</span>
+                      <h2 id="period-report-date-title">
+                        انتخاب تاریخ {profitLossDateTarget === 'start' ? 'شروع' : 'پایان'}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بستن انتخاب تاریخ"
+                      onClick={() => setProfitLossDatePickerOpen(false)}
+                    >×</button>
+                  </header>
+                  <div className="sales-invoice-date-previews" aria-label="تاریخ در سه تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <div key={calendar.id}>
+                        <span>{calendar.label}</span>
+                        <strong>{formatCalendarDate(profitLossDraftDate, calendar.id)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="sales-invoice-calendar-tabs" role="tablist" aria-label="نوع تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <button
+                        key={calendar.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={profitLossCalendar === calendar.id}
+                        className={profitLossCalendar === calendar.id ? 'active' : ''}
+                        onClick={() => selectProfitLossCalendar(calendar.id)}
+                      >{calendar.label}</button>
+                    ))}
+                  </div>
+                  <div className="sales-invoice-calendar-month">
+                    <button type="button" aria-label="ماه قبل" onClick={() => moveProfitLossCalendarMonth(-1)}>‹</button>
+                    <strong>
+                      {new Intl.DateTimeFormat(`fa-IR-u-ca-${profitLossCalendar}-nu-arabext`, {
+                        month: 'long',
+                        year: 'numeric',
+                        timeZone: 'UTC',
+                      }).format(profitLossVisibleMonth)}
+                    </strong>
+                    <button type="button" aria-label="ماه بعد" onClick={() => moveProfitLossCalendarMonth(1)}>›</button>
+                  </div>
+                  <div className="sales-invoice-calendar-grid" role="grid" aria-label="روزهای ماه">
+                    {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((day, index) => (
+                      <span className="weekday" role="columnheader" key={`${day}-${index}`}>{day}</span>
+                    ))}
+                    {(() => {
+                      const dates = getCalendarMonthDates(profitLossVisibleMonth, profitLossCalendar)
+                      const firstDayOffset = (dates[0].getUTCDay() + 1) % 7
+                      const today = todayInvoiceDate.toISOString().slice(0, 10)
+                      const selectedDate = normalizeUtcDate(profitLossDraftDate).toISOString().slice(0, 10)
+                      return (
+                        <>
+                          {Array.from({ length: firstDayOffset }, (_, index) => (
+                            <span className="empty-day" role="gridcell" key={`empty-${index}`} />
+                          ))}
+                          {dates.map((date) => {
+                            const dateKey = date.toISOString().slice(0, 10)
+                            const isSelected = dateKey === selectedDate
+                            return (
+                              <button
+                                className={[dateKey === today ? 'today' : '', isSelected ? 'selected' : ''].filter(Boolean).join(' ')}
+                                type="button"
+                                role="gridcell"
+                                aria-label={formatCalendarDate(date, profitLossCalendar, true)}
+                                aria-pressed={isSelected}
+                                key={dateKey}
+                                onClick={() => setProfitLossDraftDate(date)}
+                              >
+                                {new Intl.DateTimeFormat(`fa-IR-u-ca-${profitLossCalendar}-nu-arabext`, {
+                                  day: 'numeric',
+                                  timeZone: 'UTC',
+                                }).format(date)}
+                              </button>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
+                  </div>
+                  <div className="sales-invoice-date-actions">
+                    <button
+                      className="today-action"
+                      type="button"
+                      onClick={() => {
+                        setProfitLossDraftDate(todayInvoiceDate)
+                        setProfitLossVisibleMonth(todayInvoiceDate)
+                      }}
+                    >امروز</button>
+                    <div>
+                      <button type="button" onClick={() => setProfitLossDatePickerOpen(false)}>انصراف</button>
+                      <button className="confirm" type="button" onClick={saveProfitLossDate}>تأیید تاریخ</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'گزارش سود و زیان' ? (
+          <div className="invoice-profit-page">
+            <header className="invoice-profit-hero">
+              <button
+                className="invoice-profit-back"
+                type="button"
+                onClick={() => setActiveTab('گزارش‌ها')}
+              >
+                <span aria-hidden="true">→</span>
+                بازگشت به گزارش‌ها
+              </button>
+              <div className="invoice-profit-hero-content">
+                <span className="invoice-profit-hero-icon"><Icon name="accounts" /></span>
+                <div>
+                  <span className="invoice-profit-eyebrow">تحلیل عملکرد مالی</span>
+                  <h1>گزارش سود و زیان</h1>
+                  <p>درآمد، هزینه و نتیجهٔ خالص را در بازهٔ زمانی بررسی کن.</p>
+                </div>
+              </div>
+              <span className="invoice-profit-hero-mark" aria-hidden="true">±</span>
+            </header>
+
+            <section className="invoice-profit-filter" aria-labelledby="profit-loss-filter-title">
+              <div className="invoice-profit-section-heading">
+                <div>
+                  <span className="invoice-profit-step">۱</span>
+                  <div>
+                    <h2 id="profit-loss-filter-title">بازهٔ گزارش</h2>
+                    <p>تاریخ شروع و پایان را برای محاسبه انتخاب کن.</p>
+                  </div>
+                </div>
+                <span className="invoice-profit-filter-icon" aria-hidden="true">▦</span>
+              </div>
+
+              <div className="invoice-profit-date-fields">
+                <div className="invoice-profit-date-control">
+                  <span>از تاریخ</span>
+                  <button
+                    className="invoice-profit-date-trigger"
+                    type="button"
+                    aria-label={`انتخاب تاریخ شروع، ${formatCalendarDate(
+                      new Date(`${profitLossStartDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}`}
+                    onClick={() => openProfitLossDatePicker('start')}
+                  >
+                    <strong>{formatCalendarDate(
+                      new Date(`${profitLossStartDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}</strong>
+                    <small>{invoiceCalendars.find((calendar) => (
+                      calendar.id === profitLossCalendar
+                    ))?.label}</small>
+                    <span aria-hidden="true">▦</span>
+                  </button>
+                </div>
+                <span className="invoice-profit-range-divider" aria-hidden="true">تا</span>
+                <div className="invoice-profit-date-control">
+                  <span>تا تاریخ</span>
+                  <button
+                    className="invoice-profit-date-trigger"
+                    type="button"
+                    aria-label={`انتخاب تاریخ پایان، ${formatCalendarDate(
+                      new Date(`${profitLossEndDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}`}
+                    onClick={() => openProfitLossDatePicker('end')}
+                  >
+                    <strong>{formatCalendarDate(
+                      new Date(`${profitLossEndDate}T12:00:00Z`),
+                      profitLossCalendar,
+                    )}</strong>
+                    <small>{invoiceCalendars.find((calendar) => (
+                      calendar.id === profitLossCalendar
+                    ))?.label}</small>
+                    <span aria-hidden="true">▦</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="invoice-profit-presets" aria-label="میانبرهای بازهٔ زمانی">
+                <span>انتخاب سریع</span>
+                {invoiceProfitPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setProfitLossPreset(preset.id)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="invoice-profit-filter-footer">
+                <p>گزارش بر اساس تاریخ فاکتورها و اسناد درآمد و هزینه محاسبه می‌شود.</p>
+                <button
+                  className="invoice-profit-calculate"
+                  type="button"
+                  onClick={calculateProfitLoss}
+                >
+                  <span aria-hidden="true">↗</span>
+                  محاسبهٔ سود و زیان
+                </button>
+              </div>
+              {profitLossError && (
+                <p className="invoice-profit-error" role="alert">{profitLossError}</p>
+              )}
+            </section>
+
+            {profitLossDatePickerOpen && (
+              <div
+                className="sales-invoice-date-backdrop"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setProfitLossDatePickerOpen(false)
+                }}
+              >
+                <section
+                  className="sales-invoice-date-dialog"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="profit-loss-date-title"
+                >
+                  <header className="sales-invoice-date-heading">
+                    <div>
+                      <span>بازهٔ گزارش سود و زیان</span>
+                      <h2 id="profit-loss-date-title">
+                        انتخاب تاریخ {profitLossDateTarget === 'start' ? 'شروع' : 'پایان'}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="بستن انتخاب تاریخ"
+                      onClick={() => setProfitLossDatePickerOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </header>
+
+                  <div className="sales-invoice-date-previews" aria-label="تاریخ در سه تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <div key={calendar.id}>
+                        <span>{calendar.label}</span>
+                        <strong>{formatCalendarDate(profitLossDraftDate, calendar.id)}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-tabs" role="tablist" aria-label="نوع تقویم">
+                    {invoiceCalendars.map((calendar) => (
+                      <button
+                        key={calendar.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={profitLossCalendar === calendar.id}
+                        className={profitLossCalendar === calendar.id ? 'active' : ''}
+                        onClick={() => selectProfitLossCalendar(calendar.id)}
+                      >
+                        {calendar.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="sales-invoice-calendar-month">
+                    <button
+                      type="button"
+                      aria-label="ماه قبل"
+                      onClick={() => moveProfitLossCalendarMonth(-1)}
+                    >
+                      ‹
+                    </button>
+                    <strong>
+                      {new Intl.DateTimeFormat(`fa-IR-u-ca-${profitLossCalendar}-nu-arabext`, {
+                        month: 'long',
+                        year: 'numeric',
+                        timeZone: 'UTC',
+                      }).format(profitLossVisibleMonth)}
+                    </strong>
+                    <button
+                      type="button"
+                      aria-label="ماه بعد"
+                      onClick={() => moveProfitLossCalendarMonth(1)}
+                    >
+                      ›
+                    </button>
+                  </div>
+
+                  <div className="sales-invoice-calendar-grid" role="grid" aria-label="روزهای ماه">
+                    {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((day, index) => (
+                      <span className="weekday" role="columnheader" key={`${day}-${index}`}>{day}</span>
+                    ))}
+                    {(() => {
+                      const dates = getCalendarMonthDates(profitLossVisibleMonth, profitLossCalendar)
+                      const firstDayOffset = (dates[0].getUTCDay() + 1) % 7
+                      const today = todayInvoiceDate.toISOString().slice(0, 10)
+                      const selectedDate = normalizeUtcDate(profitLossDraftDate).toISOString().slice(0, 10)
+
+                      return (
+                        <>
+                          {Array.from({ length: firstDayOffset }, (_, index) => (
+                            <span className="empty-day" role="gridcell" key={`empty-${index}`} />
+                          ))}
+                          {dates.map((date) => {
+                            const dateKey = date.toISOString().slice(0, 10)
+                            const isSelected = dateKey === selectedDate
+
+                            return (
+                              <button
+                                className={[
+                                  dateKey === today ? 'today' : '',
+                                  isSelected ? 'selected' : '',
+                                ].filter(Boolean).join(' ')}
+                                type="button"
+                                role="gridcell"
+                                aria-label={formatCalendarDate(date, profitLossCalendar, true)}
+                                aria-pressed={isSelected}
+                                key={dateKey}
+                                onClick={() => setProfitLossDraftDate(date)}
+                              >
+                                {new Intl.DateTimeFormat(`fa-IR-u-ca-${profitLossCalendar}-nu-arabext`, {
+                                  day: 'numeric',
+                                  timeZone: 'UTC',
+                                }).format(date)}
+                              </button>
+                            )
+                          })}
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="sales-invoice-date-actions">
+                    <button
+                      className="today-action"
+                      type="button"
+                      onClick={() => {
+                        setProfitLossDraftDate(todayInvoiceDate)
+                        setProfitLossVisibleMonth(todayInvoiceDate)
+                      }}
+                    >
+                      امروز
+                    </button>
+                    <div>
+                      <button type="button" onClick={() => setProfitLossDatePickerOpen(false)}>انصراف</button>
+                      <button className="confirm" type="button" onClick={saveProfitLossDate}>تأیید تاریخ</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {profitLossCalculated && (
+              <section className="invoice-profit-results" aria-labelledby="profit-loss-results-title" aria-live="polite">
+                {storedSalesInvoices.error
+                || storedReturnSalesInvoices.error
+                || storedMoneyDocuments.error
+                || storedInventoryRecords.error ? (
+                  <p className="invoice-profit-error" role="alert">
+                    {storedSalesInvoices.error
+                      || storedReturnSalesInvoices.error
+                      || storedMoneyDocuments.error
+                      || storedInventoryRecords.error}
+                  </p>
+                ) : (
+                  <>
+                    <div className="invoice-profit-results-heading">
+                      <div>
+                        <span className="invoice-profit-step">۲</span>
+                        <div>
+                          <h2 id="profit-loss-results-title">خلاصهٔ سود و زیان</h2>
+                          <p>{formatPersonBalance(profitLossRows.length)} سند و فاکتور بررسی شد</p>
+                        </div>
+                      </div>
+                      <span className="invoice-profit-result-badge">گزارش مالی</span>
+                    </div>
+
+                    <div className={`invoice-profit-total ${profitLossNet < 0 ? 'loss' : ''}`}>
+                      <div>
+                        <span>
+                          {profitLossNet < 0
+                            ? 'زیان خالص این محدوده'
+                            : profitLossNet > 0 ? 'سود خالص این محدوده' : 'نتیجهٔ خالص این محدوده'}
+                        </span>
+                        <strong>{formatPersonBalance(Math.abs(profitLossNet))} <small>ریال</small></strong>
+                      </div>
+                      <span className="invoice-profit-total-icon" aria-hidden="true">
+                        {profitLossNet < 0 ? '↘' : '↗'}
+                      </span>
+                    </div>
+
+                    <div className="invoice-profit-metrics">
+                      <div>
+                        <span>سود ناخالص فروش پس از برگشت</span>
+                        <strong className={profitLossGrossProfit < 0 ? 'negative' : ''}>
+                          {formatPersonBalance(profitLossGrossProfit)} <small>ریال</small>
+                        </strong>
+                      </div>
+                      <div>
+                        <span>سایر درآمدها</span>
+                        <strong>{formatPersonBalance(profitLossOtherIncome)} <small>ریال</small></strong>
+                      </div>
+                      <div>
+                        <span>هزینه‌ها</span>
+                        <strong>{formatPersonBalance(profitLossExpenseTotal)} <small>ریال</small></strong>
+                      </div>
+                    </div>
+
+                    {profitLossRows.some((row) => row.missingCostLines > 0) && (
+                      <p className="invoice-profit-warning" role="status">
+                        سود {formatPersonBalance(profitLossRows.filter((row) => row.amount === null).length)} فاکتور یا برگشت
+                        به‌دلیل نبودن بعضی کالاها در فهرست فعلی، در جمع نهایی محاسبه نشده است.
+                      </p>
+                    )}
+
+                    <div className="invoice-profit-basis">
+                      سود فروش بر اساس بهای خرید فعلی کالا و پس از کسر برگشت از فروش است؛ سایر درآمدها و هزینه‌ها از اسناد ثبت‌شده محاسبه می‌شوند.
+                      دریافت و پرداخت وجه به‌عنوان گردش حساب جداگانه در این گزارش جمع نشده‌اند.
+                    </div>
+
+                    <div className="invoice-profit-table-wrap">
+                      <table className="invoice-profit-table">
+                        <thead>
+                          <tr>
+                            <th>نوع سند</th>
+                            <th>تاریخ</th>
+                            <th>شماره</th>
+                            <th>شرح</th>
+                            <th>اثر بر سود و زیان</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {profitLossRows.length ? profitLossRows.map((row) => (
+                            <tr key={row.id}>
+                              <td data-label="نوع سند">{row.kind}</td>
+                              <td data-label="تاریخ">{formatCalendarDate(
+                                new Date(`${row.date}T12:00:00Z`),
+                                row.calendar,
+                              )}</td>
+                              <td data-label="شماره">{row.reference}</td>
+                              <td data-label="شرح">{row.detail}</td>
+                              <td
+                                className={row.amount !== null && row.amount < 0 ? 'negative' : ''}
+                                data-label="اثر بر سود و زیان"
+                              >
+                                {row.amount === null
+                                  ? 'نامشخص'
+                                  : `${row.amount < 0 ? '−' : '+'}${formatPersonBalance(Math.abs(row.amount))} ریال`}
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={5}>در بازهٔ انتخاب‌شده سند یا فاکتوری ثبت نشده است.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+          </div>
         ) : activeTab === 'گزارش‌ها' ? (
           <div className="reports-view">
             <section className="page-intro reports-intro">
@@ -17663,7 +20604,7 @@ function App() {
             </section>
             <section className="content-section reports-page">
               <div className="section-heading">
-                <h2 className="section-title">گزارش‌های اصلی</h2>
+                <h2 className="section-title">گزارش‌ها</h2>
                 <span className="section-count">{reports.length} گزارش</span>
               </div>
               <div className="reports-card-grid">
@@ -17672,41 +20613,17 @@ function App() {
                     className="report-card"
                     key={item.label}
                     type="button"
-                    onClick={() => {
-                      if (item.label === 'گزارش اشخاص') {
-                        setAccountReportGroup(allAccountReportGroups)
-                        setActiveTab('گزارشات طرف حساب‌ها')
-                      } else if (item.label === 'گزارش حساب‌ها') {
-                        setActiveTab('حساب‌ها')
-                      } else if (item.label === 'گزارش کالا و انبار') {
-                        setActiveTab('کالا و انبار')
-                      } else {
-                        showComingSoon(item.label)
-                      }
-                    }}
+                    onClick={() => item.label === 'گزارش روزانه'
+                      || item.label === 'ریز گزارش روزانه'
+                      || item.label === 'گزارش دوره‌ای'
+                      || item.label === 'گزارش دارایی'
+                      || item.label === 'مجموع سود فاکتور'
+                      || item.label === 'گزارش سود و زیان'
+                      || item.label === 'محاسبه سود فاکتور'
+                      ? setActiveTab(item.label)
+                      : showComingSoon(item.label)}
                   >
                     <span className="report-card-icon"><Icon name={item.icon} /></span>
-                    <span className="report-card-copy">
-                      <strong>{item.label}</strong>
-                      <small>{item.description}</small>
-                    </span>
-                    <span className="report-card-chevron" aria-hidden="true">‹</span>
-                  </button>
-                ))}
-              </div>
-              <div className="section-heading reports-analytics-heading">
-                <h2 className="section-title">گزارش‌های تحلیلی</h2>
-                <span className="section-count">{analyticalReports.length} گزارش</span>
-              </div>
-              <div className="reports-card-grid">
-                {analyticalReports.map((item) => (
-                  <button
-                    className="report-card"
-                    key={item.label}
-                    type="button"
-                    onClick={() => showComingSoon(item.label)}
-                  >
-                    <span className="report-card-icon analytical"><Icon name={item.icon} /></span>
                     <span className="report-card-copy">
                       <strong>{item.label}</strong>
                       <small>{item.description}</small>
