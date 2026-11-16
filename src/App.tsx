@@ -4836,6 +4836,17 @@ function App() {
   }, [colorTheme])
 
   useEffect(() => {
+    const themeColorMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    const appFrame = document.querySelector<HTMLElement>('.app-frame')
+    if (!themeColorMeta || !appFrame) return
+
+    const statusBarColor = getComputedStyle(appFrame)
+      .getPropertyValue('--app-color-navy')
+      .trim()
+    if (statusBarColor) themeColorMeta.content = statusBarColor
+  }, [colorTheme, theme])
+
+  useEffect(() => {
     if (activeSettingsSection !== 'امنیت') return
 
     const secureContext = window.isSecureContext
