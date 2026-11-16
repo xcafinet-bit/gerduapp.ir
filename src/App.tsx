@@ -4775,6 +4775,38 @@ function App() {
     .filter((item) => inventoryShareSetting.includeZeroStock || item.stock > 0)
 
   useEffect(() => {
+    if (storedInventoryRecords.error) return
+
+    const synchronizedItems = synchronizeInventoryCatalog(
+      storedInventoryRecords.items,
+      inventoryOptions.warehouses,
+      inventoryOptions.serviceWarehouses,
+    )
+    if (JSON.stringify(synchronizedItems) === JSON.stringify(storedInventoryRecords.items)) return
+
+    try {
+      localStorage.setItem(
+        getActiveStoreDataStorageKey(INVENTORY_ITEMS_STORAGE_KEY, activeStoreId),
+        JSON.stringify(synchronizedItems),
+      )
+      setStoredInventoryRecords({ items: synchronizedItems, error: '' })
+    } catch {
+      setStoredInventoryRecords((current) => current.error
+        ? current
+        : {
+            ...current,
+            error: 'همگام‌سازی کالاها با انبارها انجام نشد؛ فضای ذخیره‌سازی دستگاه را بررسی کنید.',
+          })
+    }
+  }, [
+    activeStoreId,
+    inventoryOptions.serviceWarehouses,
+    inventoryOptions.warehouses,
+    storedInventoryRecords.error,
+    storedInventoryRecords.items,
+  ])
+
+  useEffect(() => {
     const timerId = window.setInterval(() => {
       const currentTime = new Date()
       setNow(currentTime)
@@ -10332,7 +10364,17 @@ function App() {
     'فروشگاه',
   ]
   const showBottomNavigation = demoEntered && stores.length > 0 && !hiddenNavigationTabs.includes(activeTab)
-  const activeNavigationLabel = ['گزارشات طرف حساب‌ها', 'گزارشات'].includes(activeTab)
+  const activeNavigationLabel = [
+    'گزارشات طرف حساب‌ها',
+    'گزارشات',
+    'گزارش روزانه',
+    'ریز گزارش روزانه',
+    'گزارش دوره‌ای',
+    'گزارش دارایی',
+    'محاسبه سود فاکتور',
+    'مجموع سود فاکتور',
+    'گزارش سود و زیان',
+  ].includes(activeTab)
     ? 'گزارش‌ها'
     : activeTab === 'فروشگاه' ? 'خانه' : activeTab
   const toolbarAddKind: 'people' | 'product' | 'service' | 'production' | 'accounts' | null =
@@ -15334,7 +15376,7 @@ function App() {
                 }}
               >
                 <section
-                  className={`sales-invoice-picker${returnPurchaseInvoiceMode ? '' : ' warehouse-arrow-shift'}`}
+                  className="sales-invoice-picker warehouse-arrow-shift"
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="sales-invoice-picker-title"
