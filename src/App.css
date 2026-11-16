@@ -4,6 +4,7 @@
 }
 
 .app-frame {
+  --app-topbar-height: max(78px, calc(74px + env(safe-area-inset-top)));
   height: 100%;
   min-height: 0;
   display: flex;
@@ -27,8 +28,9 @@
 }
 
 .topbar {
-  position: relative;
-  z-index: 5;
+  position: sticky;
+  z-index: 130;
+  top: 0;
   flex: 0 0 auto;
   width: min(100%, 760px);
   min-height: 78px;
@@ -39,11 +41,6 @@
   justify-content: space-between;
   border-radius: 0 0 23px 23px;
   box-shadow: 0 9px 22px #153d4c22;
-}
-
-/* Temporary test override; the header markup and its original styles remain intact. */
-.app-frame > .topbar {
-  display: none;
 }
 
 .brand {
@@ -9220,6 +9217,10 @@ button:focus-visible {
 }
 
 @media (max-width: 760px) {
+  .app-frame {
+    --app-topbar-height: max(70px, calc(68px + env(safe-area-inset-top)));
+  }
+
   .auth-content {
     min-height: 0;
     align-items: start;
@@ -10458,7 +10459,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 .inventory-stocktake-page {
   position: fixed;
   z-index: 120;
-  top: 0;
+  top: var(--app-topbar-height);
   right: 50%;
   bottom: 0;
   width: min(100%, 760px);
@@ -13512,7 +13513,6 @@ button[aria-expanded='true'] .dropdown-chevron::before {
   background: #f2f6f5;
 }
 
-.sales-invoice-mode .topbar,
 .sales-invoice-mode .bottom-nav {
   display: none;
 }
@@ -13526,7 +13526,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 .sales-invoice-list-page {
   position: fixed;
   z-index: 120;
-  inset: 0;
+  inset: var(--app-topbar-height) 0 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -13812,7 +13812,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 .check-detail-page {
   position: fixed;
   z-index: 120;
-  inset: 0;
+  inset: var(--app-topbar-height) 0 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -14154,7 +14154,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 .sales-invoice-confirmation-page {
   position: fixed;
   z-index: 120;
-  inset: 0;
+  inset: var(--app-topbar-height) 0 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -22842,9 +22842,7 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 }
 
 .app-frame[data-color-theme] .topbar {
-  background:
-    radial-gradient(ellipse at 2% 110%, rgba(var(--app-color-accent-rgb), .35), transparent 55%),
-    linear-gradient(115deg, var(--app-color-navy), var(--app-color-mid) 65%, var(--app-color-deep));
+  background: var(--app-color-navy);
 }
 
 .app-frame[data-color-theme] .basic-bottom-nav {
@@ -22950,15 +22948,8 @@ button[aria-expanded='true'] .dropdown-chevron::before {
     radial-gradient(ellipse at 5% 110%, rgba(var(--app-color-accent-rgb), .42), transparent 55%),
     linear-gradient(120deg, var(--app-color-navy), var(--app-color-mid) 62%, var(--app-color-deep));
   border: 1px solid rgba(var(--app-color-accent-rgb), .25);
-  border-radius: 0 0 24px 24px;
+  border-radius: 24px;
   box-shadow: 0 12px 28px rgba(var(--app-color-accent-rgb), .12);
-}
-
-@media (max-width: 760px) {
-  .accounts-hero {
-    margin-top: -14px;
-    padding-top: calc(22px + env(safe-area-inset-top));
-  }
 }
 
 .accounts-hero-top {
@@ -24733,9 +24724,8 @@ button[aria-expanded='true'] .dropdown-chevron::before {
 
   .accounts-hero {
     margin-inline: -30px;
-    margin-top: -13px;
-    padding: calc(18px + env(safe-area-inset-top)) 18px 18px;
-    border-radius: 0 0 21px 21px;
+    padding: 18px;
+    border-radius: 21px;
   }
 
   .accounts-total,
@@ -25014,6 +25004,10 @@ button[aria-expanded='true'] .dropdown-chevron::before {
     min-height: calc(64px + env(safe-area-inset-top));
     gap: 6px;
     padding: calc(10px + env(safe-area-inset-top)) clamp(8px, 2.5vw, 12px) 10px;
+  }
+
+  .app-frame {
+    --app-topbar-height: calc(64px + env(safe-area-inset-top));
   }
 
   .brand {
